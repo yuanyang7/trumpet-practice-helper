@@ -12,7 +12,6 @@ from flask import Flask, render_template, request, jsonify
 from audio import download_audio, get_metadata
 from key_detection import analyze as analyze_audio
 import fingerings as fng
-import cache
 
 app = Flask(__name__)
 
@@ -73,33 +72,6 @@ def analyze():
             "scales": scales,
         }
     )
-
-
-@app.route("/saved", methods=["GET"])
-def saved():
-    """List the titles of all saved analyses."""
-    return jsonify({"songs": cache.list_saved()})
-
-
-@app.route("/save", methods=["POST"])
-def save():
-    """Save a result dict to disk, named after its song title (user-initiated)."""
-    data = request.get_json(silent=True) or {}
-    title = (data.get("title") or "").strip()
-    if not title:
-        return jsonify({"error": "Nothing to save (missing title)."}), 400
-    path = cache.save(title, data)
-    return jsonify({"ok": True, "title": title, "file": os.path.basename(path)})
-
-
-@app.route("/load", methods=["GET"])
-def load():
-    """Load a previously saved analysis by title."""
-    title = (request.args.get("title") or "").strip()
-    data = cache.load(title)
-    if data is None:
-        return jsonify({"error": f"No saved analysis named '{title}'."}), 404
-    return jsonify(data)
 
 
 if __name__ == "__main__":

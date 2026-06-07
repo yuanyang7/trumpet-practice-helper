@@ -124,6 +124,7 @@
     <span>Saved:</span>
     <select id="loadSelect"></select>
     <button type="button" id="loadBtn">Load</button>
+    <button type="button" id="deleteBtn" title="Delete this saved song">✕</button>
   </div>
   <div class="status" id="status"></div>
   <div id="results"></div>
@@ -139,6 +140,7 @@ const goBtn = document.getElementById('go');
 const loadrow = document.getElementById('loadrow');
 const loadSelect = document.getElementById('loadSelect');
 const loadBtn = document.getElementById('loadBtn');
+const deleteBtn = document.getElementById('deleteBtn');
 
 // Resolve API paths against the Flask server. When the page is served over http
 // a relative path works; in a preview pane (file:/about:) we need an absolute URL.
@@ -258,55 +260,57 @@ function render(data) {
   if (saveBtn) saveBtn.addEventListener('click', () => saveCurrent(saveBtn));
 }
 
-/* ---- Save / Load saved analyses ---- */
-async function saveCurrent(btn) {
+/* ---- Save / Load saved analyses (stored in this browser via localStorage) ---- */
+const STORE_PREFIX = 'trumpet:';
+
+function savedTitles() {
+  const titles = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(STORE_PREFIX)) titles.push(k.slice(STORE_PREFIX.length));
+  }
+  return titles.sort();
+}
+
+function saveCurrent(btn) {
   if (!window._lastResult) return;
-  btn.disabled = true;
+  const title = window._lastResult.title || 'untitled';
   try {
-    const res = await fetch(api('/save'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(window._lastResult),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Save failed');
+    localStorage.setItem(STORE_PREFIX + title, JSON.stringify(window._lastResult));
     btn.classList.add('saved');
     btn.textContent = '✓ Saved';
     refreshSaved();
   } catch (err) {
-    btn.textContent = '⚠ ' + err.message;
-  } finally {
-    btn.disabled = false;
+    btn.textContent = '⚠ ' + (err.message || 'Save failed');
   }
 }
 
-async function refreshSaved() {
-  try {
-    const res = await fetch(api('/saved'));
-    const data = await res.json();
-    const songs = data.songs || [];
-    loadSelect.innerHTML = songs.map(s => `<option>${s}</option>`).join('');
-    loadrow.hidden = songs.length === 0;
-  } catch (err) {
-    loadrow.hidden = true;
-  }
+function refreshSaved() {
+  const songs = savedTitles();
+  loadSelect.innerHTML = songs.map(s =>
+    `<option>${s.replace(/</g, '&lt;')}</option>`).join('');
+  loadrow.hidden = songs.length === 0;
 }
 
-loadBtn.addEventListener('click', async () => {
+loadBtn.addEventListener('click', () => {
   const title = loadSelect.value;
   if (!title) return;
-  status.className = 'status';
-  status.textContent = 'Loading saved analysis…';
-  try {
-    const res = await fetch(api('/load?title=' + encodeURIComponent(title)));
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Load failed');
-    render(data);
-    status.textContent = '';
-  } catch (err) {
+  const raw = localStorage.getItem(STORE_PREFIX + title);
+  if (!raw) {
     status.className = 'status error';
-    status.textContent = err.message;
+    status.textContent = `No saved analysis named "${title}".`;
+    return;
   }
+  render(JSON.parse(raw));
+  status.className = 'status';
+  status.textContent = '';
+});
+
+deleteBtn.addEventListener('click', () => {
+  const title = loadSelect.value;
+  if (!title) return;
+  localStorage.removeItem(STORE_PREFIX + title);
+  refreshSaved();
 });
 
 refreshSaved();

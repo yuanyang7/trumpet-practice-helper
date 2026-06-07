@@ -11,10 +11,11 @@ It shows:
 - For each scale: **primary + alternate fingerings**, and a **▶ Play** button
   that synthesizes the scale (Web Audio API) with a synced note highlight.
 
-**Save / Load:** click **💾 Save** to store the current result to disk under
-`cache/` (one JSON file per song, named after the YouTube title). Saved songs
-appear in the **Saved** dropdown — pick one and click **Load** to reopen it
-instantly without re-downloading or re-analyzing the audio.
+**Save / Load:** click **💾 Save** to store the current result in **your browser**
+(`localStorage`). Saved songs appear in the **Saved** dropdown — pick one and
+click **Load** to reopen it instantly without re-downloading, or **✕** to delete
+it. Saves are per-browser and private to each user, so this works the same
+whether you run it locally, on a LAN, or host it on the web.
 
 ## Requirements
 
