@@ -104,7 +104,7 @@
   <div id="results"></div>
 </div>
 
-<footer>Key detection via Krumhansl-Schmuckler · fingerings &amp; playback use Bb-trumpet written pitch</footer>
+<footer>Key detection via Krumhansl-Schmuckler · labels &amp; fingerings are written pitch; playback sounds concert pitch (matches the recording)</footer>
 
 <script>
 const form = document.getElementById('form');
@@ -228,8 +228,13 @@ const SEMITONES = {
   'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
 };
 
+// Note labels and fingerings are WRITTEN (Bb-trumpet) pitch. A trumpet actually
+// sounds a whole step lower than written, so to make playback match the recording
+// (and what your horn produces with these fingerings) we drop 2 semitones to concert pitch.
+const WRITTEN_TO_CONCERT = -2;
+
 function noteToFreq(name, octave) {
-  const midi = (octave + 1) * 12 + SEMITONES[name];
+  const midi = (octave + 1) * 12 + SEMITONES[name] + WRITTEN_TO_CONCERT;
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
