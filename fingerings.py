@@ -12,40 +12,41 @@ FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
 # Standard trumpet fingering chart over the practical written range (F#3 -> C6).
 # Keyed by (pitch_class, octave) where pitch_class is the sharp spelling.
-# This is the conventional chart taught to players; some notes have alternates
-# but these are the primary fingerings.
+# Each value is a list of valve combinations: the first is the primary
+# fingering, the rest are common alternates. The main alternate comes from the
+# valve equivalence 1+2 == 3 (both lower the pitch ~3 semitones).
 _CHART = {
-    ("F#", 3): [1, 2, 3],
-    ("G", 3): [1, 3],
-    ("G#", 3): [2, 3],
-    ("A", 3): [1, 2],
-    ("A#", 3): [1],
-    ("B", 3): [2],
-    ("C", 4): [],
-    ("C#", 4): [1, 2, 3],
-    ("D", 4): [1, 3],
-    ("D#", 4): [2, 3],
-    ("E", 4): [1, 2],
-    ("F", 4): [1],
-    ("F#", 4): [2],
-    ("G", 4): [],
-    ("G#", 4): [2, 3],
-    ("A", 4): [1, 2],
-    ("A#", 4): [1],
-    ("B", 4): [2],
-    ("C", 5): [],
-    ("C#", 5): [1, 2],
-    ("D", 5): [1],
-    ("D#", 5): [2],
-    ("E", 5): [],
-    ("F", 5): [1],
-    ("F#", 5): [2],
-    ("G", 5): [],
-    ("G#", 5): [2, 3],
-    ("A", 5): [1, 2],
-    ("A#", 5): [1],
-    ("B", 5): [2],
-    ("C", 6): [],
+    ("F#", 3): [[1, 2, 3]],
+    ("G", 3): [[1, 3]],
+    ("G#", 3): [[2, 3]],
+    ("A", 3): [[1, 2], [3]],
+    ("A#", 3): [[1]],
+    ("B", 3): [[2]],
+    ("C", 4): [[]],
+    ("C#", 4): [[1, 2, 3]],
+    ("D", 4): [[1, 3]],
+    ("D#", 4): [[2, 3]],
+    ("E", 4): [[1, 2], [3]],
+    ("F", 4): [[1]],
+    ("F#", 4): [[2]],
+    ("G", 4): [[]],
+    ("G#", 4): [[2, 3]],
+    ("A", 4): [[1, 2], [3]],
+    ("A#", 4): [[1]],
+    ("B", 4): [[2]],
+    ("C", 5): [[]],
+    ("C#", 5): [[1, 2], [3]],
+    ("D", 5): [[1]],
+    ("D#", 5): [[2]],
+    ("E", 5): [[]],
+    ("F", 5): [[1]],
+    ("F#", 5): [[2]],
+    ("G", 5): [[]],
+    ("G#", 5): [[2, 3]],
+    ("A", 5): [[1, 2], [3]],
+    ("A#", 5): [[1]],
+    ("B", 5): [[2]],
+    ("C", 6): [[]],
 }
 
 # Scale formulas as semitone offsets from the tonic.
@@ -82,16 +83,19 @@ def _spell(pc, prefer_flats):
 
 
 def _fingering_for(pc, octave):
-    """Look up the fingering for a sharp-spelled pitch class at an octave.
+    """Look up fingerings for a sharp-spelled pitch class at an octave.
 
-    Falls back to the same pitch class one octave down/up if the exact note is
-    outside the chart, so a scale never has a gap.
+    Returns (primary, alternates) where primary is a valve list (possibly empty
+    for an open note) and alternates is a list of valve lists. Returns
+    (None, []) if the note is outside the playable range entirely. Falls back to
+    the same pitch class one octave down/up so a scale never has a gap.
     """
     name = SHARP_NAMES[pc % 12]
     for oct_try in (octave, octave - 1, octave + 1):
         if (name, oct_try) in _CHART:
-            return _CHART[(name, oct_try)]
-    return None
+            combos = _CHART[(name, oct_try)]
+            return combos[0], combos[1:]
+    return None, []
 
 
 def build_scales(tonic_pc, mode, start_octave=4):
@@ -115,20 +119,24 @@ def build_scales(tonic_pc, mode, start_octave=4):
             if prev_pc is not None and pc <= prev_pc:
                 octave += 1
             prev_pc = pc
+            primary, alternates = _fingering_for(pc, octave)
             notes.append(
                 {
                     "name": _spell(pc, prefer_flats),
                     "octave": octave,
-                    "valves": _fingering_for(pc, octave),
+                    "valves": primary,
+                    "alternates": alternates,
                 }
             )
         # add the tonic an octave up to close the scale
         top_oct = octave + (1 if (tonic_pc % 12) <= prev_pc else 0)
+        primary, alternates = _fingering_for(tonic_pc, top_oct)
         notes.append(
             {
                 "name": _spell(tonic_pc, prefer_flats),
                 "octave": top_oct,
-                "valves": _fingering_for(tonic_pc, top_oct),
+                "valves": primary,
+                "alternates": alternates,
             }
         )
         scales.append({"name": sname, "notes": notes})

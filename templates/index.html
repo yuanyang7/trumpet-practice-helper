@@ -72,6 +72,10 @@
   }
   .valve.on { background: var(--pressed); border-color: var(--pressed); color: #1a1206; font-weight: 700; }
   .note .open-label { color: var(--muted); font-size: .7rem; margin-top: .55rem; }
+  .alt { margin-top: .5rem; border-top: 1px dashed var(--border); padding-top: .4rem; }
+  .alt-label { color: var(--muted); font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; }
+  .alt .valves { margin-top: .25rem; }
+  .alt .valve { width: 13px; height: 19px; border-radius: 7px; font-size: .5rem; }
   footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 2rem 1rem; }
 </style>
 </head>
@@ -148,6 +152,19 @@ function valveDiagram(valves) {
   return `<div class="valves">${cells}</div>`;
 }
 
+function altDiagram(alternates) {
+  if (!alternates || alternates.length === 0) return '';
+  const diagrams = alternates.map(valves => {
+    let cells = '';
+    for (let v = 1; v <= 3; v++) {
+      const on = valves.includes(v) ? ' on' : '';
+      cells += `<div class="valve${on}">${v}</div>`;
+    }
+    return `<div class="valves">${cells}</div>`;
+  }).join('');
+  return `<div class="alt"><div class="alt-label">alt</div>${diagrams}</div>`;
+}
+
 function render(data) {
   const keys = `
     <div class="keys">
@@ -173,6 +190,7 @@ function render(data) {
       <div class="note">
         <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
         ${valveDiagram(n.valves)}
+        ${altDiagram(n.alternates)}
       </div>`).join('');
     return `<div class="scale"><h2>${s.name}</h2><div class="notes">${notes}</div></div>`;
   }).join('');
