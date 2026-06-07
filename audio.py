@@ -6,6 +6,24 @@ import tempfile
 import shutil
 
 
+def get_metadata(url):
+    """Fetch title + id for a YouTube URL without downloading the audio (fast)."""
+    if not shutil.which("yt-dlp"):
+        raise RuntimeError("yt-dlp is not installed (brew install yt-dlp)")
+    proc = subprocess.run(
+        ["yt-dlp", "--skip-download", "--no-playlist",
+         "--print", "%(id)s\t%(title)s", url],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"Could not read video info:\n{proc.stderr[-800:]}")
+    line = proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+    vid, _, title = line.partition("\t")
+    if not title:
+        title = vid or "untitled"
+    return {"id": vid, "title": title}
+
+
 def download_audio(url, max_seconds=180):
     """Download (a slice of) the audio track from a YouTube URL.
 

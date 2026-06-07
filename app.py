@@ -9,9 +9,10 @@ import shutil
 
 from flask import Flask, render_template, request, jsonify
 
-from audio import download_audio
+from audio import download_audio, get_metadata
 from key_detection import analyze as analyze_audio
 import fingerings as fng
+import cache
 
 app = Flask(__name__)
 
@@ -40,8 +41,22 @@ def analyze_preflight():
 def analyze():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
+    force = bool(data.get("force"))
     if not url:
         return jsonify({"error": "Please provide a YouTube URL."}), 400
+
+    try:
+        meta = get_metadata(url)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    title = meta["title"]
+
+    # Serve from cache unless the user asked to re-analyze.
+    if not force:
+        cached = cache.load(title)
+        if cached is not None:
+            cached["cached"] = True
+            return jsonify(cached)
 
     wav_path = None
     try:
@@ -58,16 +73,20 @@ def analyze():
     trumpet_pc = fng.transpose_for_trumpet(concert_pc)
     scales = fng.build_scales(trumpet_pc, mode)
 
-    return jsonify(
-        {
-            "concert_key": fng.key_name(concert_pc, mode),
-            "trumpet_key": fng.key_name(trumpet_pc, mode),
-            "mode": mode,
-            "confidence": round(result["confidence"], 3),
-            "bpm": result["bpm"],
-            "scales": scales,
-        }
-    )
+    payload = {
+        "title": title,
+        "url": url,
+        "video_id": meta["id"],
+        "concert_key": fng.key_name(concert_pc, mode),
+        "trumpet_key": fng.key_name(trumpet_pc, mode),
+        "mode": mode,
+        "confidence": round(result["confidence"], 3),
+        "bpm": result["bpm"],
+        "scales": scales,
+    }
+    cache.save(title, payload)
+    payload["cached"] = False
+    return jsonify(payload)
 
 
 if __name__ == "__main__":
