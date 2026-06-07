@@ -56,7 +56,17 @@
   .keycard small { color: var(--muted); }
 
   .scale { margin-bottom: 2.2rem; }
-  .scale h2 { font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem; }
+  .scale h2 {
+    font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem;
+    display: flex; align-items: center; gap: .7rem;
+  }
+  .play-btn {
+    padding: .25rem .7rem; font-size: .8rem; border-radius: 999px; background: var(--open);
+    color: var(--accent); border: 1px solid var(--accent-dim); cursor: pointer; font-weight: 600;
+  }
+  .play-btn:hover { background: var(--accent-dim); }
+  .play-btn.playing { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+  .note.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
   .notes { display: flex; gap: .7rem; flex-wrap: wrap; }
   .note {
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
@@ -94,7 +104,7 @@
   <div id="results"></div>
 </div>
 
-<footer>Key detection via Krumhansl-Schmuckler · fingerings for Bb trumpet (written pitch)</footer>
+<footer>Key detection via Krumhansl-Schmuckler · fingerings &amp; playback use Bb-trumpet written pitch</footer>
 
 <script>
 const form = document.getElementById('form');
@@ -190,18 +200,112 @@ function render(data) {
       </div>
     </div>`;
 
-  const scales = data.scales.map(s => {
-    const notes = s.notes.map(n => `
-      <div class="note">
+  window._scales = data.scales;
+  const scales = data.scales.map((s, si) => {
+    const notes = s.notes.map((n, ni) => `
+      <div class="note" data-scale="${si}" data-note="${ni}">
         <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
         ${valveDiagram(n.valves)}
         ${altDiagram(n.alternates)}
       </div>`).join('');
-    return `<div class="scale"><h2>${s.name}</h2><div class="notes">${notes}</div></div>`;
+    return `<div class="scale">
+      <h2>${s.name}
+        <button class="play-btn" data-scale="${si}">▶ Play</button>
+      </h2>
+      <div class="notes">${notes}</div>
+    </div>`;
   }).join('');
 
   results.innerHTML = keys + scales;
 }
+
+/* ---- Web Audio scale playback ---- */
+let audioCtx = null;
+let playToken = 0;  // increments to cancel an in-progress playback
+
+const SEMITONES = {
+  'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4, 'F': 5,
+  'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
+};
+
+function noteToFreq(name, octave) {
+  const midi = (octave + 1) * 12 + SEMITONES[name];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function playTone(freq, start, dur) {
+  // Simple brassy tone: sawtooth through a gentle envelope.
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
+  gain.gain.setValueAtTime(0.25, start + dur - 0.06);
+  gain.gain.linearRampToValueAtTime(0, start + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(start);
+  osc.stop(start + dur);
+}
+
+async function playScale(scaleIndex, btn) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();
+
+  const myToken = ++playToken;  // cancels any other running playback
+  document.querySelectorAll('.play-btn').forEach(b => {
+    b.classList.remove('playing'); b.textContent = '▶ Play';
+  });
+  btn.classList.add('playing');
+  btn.textContent = '■ Stop';
+
+  const notes = window._scales[scaleIndex].notes;
+  const noteDur = 0.4;       // seconds of sound per note
+  const step = 0.42;         // gap between note onsets
+  const t0 = audioCtx.currentTime + 0.05;
+
+  notes.forEach((n, i) => {
+    playTone(noteToFreq(n.name, n.octave), t0 + i * step, noteDur);
+  });
+
+  // Visual highlight in sync with the audio.
+  const cards = document.querySelectorAll(`.note[data-scale="${scaleIndex}"]`);
+  for (let i = 0; i < notes.length; i++) {
+    setTimeout(() => {
+      if (myToken !== playToken) return;
+      cards.forEach(c => c.classList.remove('active'));
+      const c = document.querySelector(`.note[data-scale="${scaleIndex}"][data-note="${i}"]`);
+      if (c) c.classList.add('active');
+    }, i * step * 1000);
+  }
+  setTimeout(() => {
+    if (myToken !== playToken) return;
+    cards.forEach(c => c.classList.remove('active'));
+    btn.classList.remove('playing');
+    btn.textContent = '▶ Play';
+  }, notes.length * step * 1000 + 200);
+}
+
+function stopPlayback() {
+  playToken++;  // invalidate scheduled highlight callbacks
+  document.querySelectorAll('.play-btn').forEach(b => {
+    b.classList.remove('playing'); b.textContent = '▶ Play';
+  });
+  document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
+  // Suspend+resume cuts any still-sounding oscillators.
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+results.addEventListener('click', (e) => {
+  const btn = e.target.closest('.play-btn');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.scale, 10);
+  if (btn.classList.contains('playing')) {
+    stopPlayback();
+  } else {
+    playScale(idx, btn);
+  }
+});
 </script>
 </body>
 </html>

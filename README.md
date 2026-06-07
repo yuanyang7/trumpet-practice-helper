@@ -3,10 +3,13 @@
 Paste a YouTube music link → the app extracts the audio, detects the musical key,
 and shows **Bb trumpet fingering charts** for common scales in that key.
 
-It shows two keys:
+It shows:
 - **Concert key** — what the recording is actually in.
 - **Trumpet (Bb) key** — transposed up a whole step, which is what a trumpet
   player reads and fingers. Fingerings are for this written key.
+- **Tempo (BPM)** — estimated from the track.
+- For each scale: **primary + alternate fingerings**, and a **▶ Play** button
+  that synthesizes the scale (Web Audio API) with a synced note highlight.
 
 ## Requirements
 
