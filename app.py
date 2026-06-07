@@ -10,7 +10,7 @@ import shutil
 from flask import Flask, render_template, request, jsonify
 
 from audio import download_audio
-from key_detection import detect_key
+from key_detection import analyze as analyze_audio
 import fingerings as fng
 
 app = Flask(__name__)
@@ -46,13 +46,15 @@ def analyze():
     wav_path = None
     try:
         wav_path = download_audio(url)
-        concert_pc, mode, confidence = detect_key(wav_path)
+        result = analyze_audio(wav_path)
     except Exception as e:  # surface a readable message to the UI
         return jsonify({"error": str(e)}), 500
     finally:
         if wav_path and os.path.isdir(os.path.dirname(wav_path)):
             shutil.rmtree(os.path.dirname(wav_path), ignore_errors=True)
 
+    concert_pc = result["pitch_class"]
+    mode = result["mode"]
     trumpet_pc = fng.transpose_for_trumpet(concert_pc)
     scales = fng.build_scales(trumpet_pc, mode)
 
@@ -61,7 +63,8 @@ def analyze():
             "concert_key": fng.key_name(concert_pc, mode),
             "trumpet_key": fng.key_name(trumpet_pc, mode),
             "mode": mode,
-            "confidence": round(confidence, 3),
+            "confidence": round(result["confidence"], 3),
+            "bpm": result["bpm"],
             "scales": scales,
         }
     )

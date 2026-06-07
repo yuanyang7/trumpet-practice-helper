@@ -179,6 +179,11 @@ function render(data) {
         <small>what you read & play</small>
       </div>
       <div class="keycard">
+        <div class="label">Tempo</div>
+        <div class="value">${data.bpm} <small style="font-size:1rem">BPM</small></div>
+        <small>estimated</small>
+      </div>
+      <div class="keycard">
         <div class="label">Confidence</div>
         <div class="value">${Math.round(data.confidence * 100)}%</div>
         <small>detection certainty</small>

@@ -29,17 +29,18 @@ def _correlate(chroma_vector, profile):
     return np.array(results)
 
 
-def detect_key(audio_path):
-    """Return (pitch_class, mode, confidence) for the audio file.
+def analyze(audio_path):
+    """Analyze an audio file once and return key + tempo.
 
-    pitch_class: 0-11 where 0 = C.
-    mode: "major" or "minor".
-    confidence: best correlation score (roughly 0-1).
+    Returns a dict: {pitch_class, mode, confidence, bpm}.
+    pitch_class is 0-11 (0 = C); mode is "major"/"minor"; confidence ~0-1;
+    bpm is the estimated tempo in beats per minute (rounded int).
     """
     y, sr = librosa.load(audio_path, sr=22050, mono=True)
 
-    # Harmonic component gives cleaner pitch information than raw audio.
-    y_harmonic = librosa.effects.harmonic(y)
+    # Separate harmonic (for pitch) and percussive (for tempo) components.
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+
     chroma = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr)
     chroma_mean = chroma.mean(axis=1)
 
@@ -52,5 +53,11 @@ def detect_key(audio_path):
     best_minor = minor_corrs[best_minor_pc]
 
     if best_major >= best_minor:
-        return best_major_pc, "major", float(best_major)
-    return best_minor_pc, "minor", float(best_minor)
+        pc, mode, conf = best_major_pc, "major", float(best_major)
+    else:
+        pc, mode, conf = best_minor_pc, "minor", float(best_minor)
+
+    tempo, _ = librosa.beat.beat_track(y=y_percussive, sr=sr)
+    bpm = int(round(float(np.atleast_1d(tempo)[0])))
+
+    return {"pitch_class": pc, "mode": mode, "confidence": conf, "bpm": bpm}
