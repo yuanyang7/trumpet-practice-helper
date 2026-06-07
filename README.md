@@ -17,6 +17,11 @@ click **Load** to reopen it instantly without re-downloading, or **✕** to dele
 it. Saves are per-browser and private to each user, so this works the same
 whether you run it locally, on a LAN, or host it on the web.
 
+If the browser blocks `localStorage` (e.g. a page opened from a `data:` URL),
+**Save** instead downloads a `.json` file. Use **📂 Import file** to load any
+saved `.json` back — which is also how you can share a saved analysis with
+someone else.
+
 ## Requirements
 
 - Python 3.9+

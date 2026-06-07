@@ -126,6 +126,10 @@
     <button type="button" id="loadBtn">Load</button>
     <button type="button" id="deleteBtn" title="Delete this saved song">✕</button>
   </div>
+  <div class="loadrow">
+    <button type="button" id="importBtn">📂 Import file</button>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
   <div class="status" id="status"></div>
   <div id="results"></div>
 </div>
@@ -141,6 +145,8 @@ const loadrow = document.getElementById('loadrow');
 const loadSelect = document.getElementById('loadSelect');
 const loadBtn = document.getElementById('loadBtn');
 const deleteBtn = document.getElementById('deleteBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
 
 // Resolve API paths against the Flask server. When the page is served over http
 // a relative path works; in a preview pane (file:/about:) we need an absolute URL.
@@ -260,10 +266,29 @@ function render(data) {
   if (saveBtn) saveBtn.addEventListener('click', () => saveCurrent(saveBtn));
 }
 
-/* ---- Save / Load saved analyses (stored in this browser via localStorage) ---- */
+/* ---- Save / Load saved analyses ----
+   Primary store is this browser's localStorage. Some contexts disable it (e.g.
+   a page served from a data: URL, like the preview pane), so we detect that and
+   fall back to downloading/importing a JSON file, which also works for sharing. */
 const STORE_PREFIX = 'trumpet:';
 
+function storageOK() {
+  try {
+    const k = '__trumpet_test__';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function safeName(title) {
+  return (title || 'untitled').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+}
+
 function savedTitles() {
+  if (!storageOK()) return [];
   const titles = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -272,16 +297,30 @@ function savedTitles() {
   return titles.sort();
 }
 
+function downloadJSON(title, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = safeName(title) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
 function saveCurrent(btn) {
   if (!window._lastResult) return;
   const title = window._lastResult.title || 'untitled';
-  try {
+  if (storageOK()) {
     localStorage.setItem(STORE_PREFIX + title, JSON.stringify(window._lastResult));
     btn.classList.add('saved');
     btn.textContent = '✓ Saved';
     refreshSaved();
-  } catch (err) {
-    btn.textContent = '⚠ ' + (err.message || 'Save failed');
+  } else {
+    // Storage blocked here — hand the user a file they can re-import or share.
+    downloadJSON(title, window._lastResult);
+    btn.classList.add('saved');
+    btn.textContent = '⬇ Downloaded';
   }
 }
 
@@ -311,6 +350,31 @@ deleteBtn.addEventListener('click', () => {
   if (!title) return;
   localStorage.removeItem(STORE_PREFIX + title);
   refreshSaved();
+});
+
+importBtn.addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      render(data);
+      status.className = 'status';
+      status.textContent = '';
+      // Persist it for next time if this browser allows it.
+      if (storageOK() && data.title) {
+        localStorage.setItem(STORE_PREFIX + data.title, JSON.stringify(data));
+        refreshSaved();
+      }
+    } catch (err) {
+      status.className = 'status error';
+      status.textContent = 'Could not read that file: ' + err.message;
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';  // allow re-importing the same file
 });
 
 refreshSaved();
