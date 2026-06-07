@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trumpet Practice Helper</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --accent: #f0a830;
+    --accent-dim: #6b5430;
+    --text: #e8e8ea;
+    --muted: #9aa0aa;
+    --pressed: #f0a830;
+    --open: #2a2e38;
+    --border: #2c313c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header { text-align: center; padding: 2.5rem 1rem 1.5rem; }
+  h1 { margin: 0 0 .3rem; font-size: 1.9rem; }
+  h1 .emoji { filter: saturate(1.2); }
+  header p { color: var(--muted); margin: 0; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 1rem 4rem; }
+  .form {
+    display: flex; gap: .6rem; max-width: 640px; margin: 0 auto 1.2rem; flex-wrap: wrap;
+  }
+  input[type=url] {
+    flex: 1; min-width: 240px; padding: .8rem 1rem; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    font-size: 1rem;
+  }
+  input[type=url]:focus { outline: none; border-color: var(--accent); }
+  button {
+    padding: .8rem 1.4rem; border: none; border-radius: 10px; background: var(--accent);
+    color: #1a1206; font-weight: 600; font-size: 1rem; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: progress; }
+  .status { text-align: center; color: var(--muted); min-height: 1.5rem; }
+  .status.error { color: #ff7b72; }
+
+  .keys {
+    display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+    margin: 1.5rem 0 2rem;
+  }
+  .keycard {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1rem 1.6rem; text-align: center; min-width: 180px;
+  }
+  .keycard .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  .keycard .value { font-size: 1.7rem; font-weight: 700; color: var(--accent); margin-top: .2rem; }
+  .keycard small { color: var(--muted); }
+
+  .scale { margin-bottom: 2.2rem; }
+  .scale h2 { font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem; }
+  .notes { display: flex; gap: .7rem; flex-wrap: wrap; }
+  .note {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: .7rem .6rem .5rem; text-align: center; width: 78px;
+  }
+  .note .nname { font-weight: 700; font-size: 1.1rem; }
+  .note .noct { color: var(--muted); font-size: .75rem; font-weight: 400; }
+  .valves { display: flex; gap: 5px; justify-content: center; margin-top: .5rem; }
+  .valve {
+    width: 18px; height: 26px; border-radius: 9px; border: 2px solid var(--accent-dim);
+    background: var(--open); display: flex; align-items: flex-end; justify-content: center;
+    font-size: .6rem; color: var(--muted); padding-bottom: 1px;
+  }
+  .valve.on { background: var(--pressed); border-color: var(--pressed); color: #1a1206; font-weight: 700; }
+  .note .open-label { color: var(--muted); font-size: .7rem; margin-top: .55rem; }
+  footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 2rem 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="emoji">🎺</span> Trumpet Practice Helper</h1>
+  <p>Paste a YouTube link — get the key and trumpet fingerings for its scales.</p>
+</header>
+
+<div class="wrap">
+  <form class="form" id="form">
+    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
+    <button type="submit" id="go">Analyze</button>
+  </form>
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+</div>
+
+<footer>Key detection via Krumhansl-Schmuckler · fingerings for Bb trumpet (written pitch)</footer>
+
+<script>
+const form = document.getElementById('form');
+const status = document.getElementById('status');
+const results = document.getElementById('results');
+const goBtn = document.getElementById('go');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = document.getElementById('url').value.trim();
+  if (!url) return;
+  results.innerHTML = '';
+  status.className = 'status';
+  status.textContent = 'Downloading audio and detecting key… (this can take 20–60s)';
+  goBtn.disabled = true;
+
+  // Use an absolute URL so it works whether the page is served by Flask or
+  // opened in a preview pane (where a relative URL has no origin to resolve against).
+  const API = (location.protocol === 'http:' || location.protocol === 'https:')
+    ? '/analyze'
+    : 'http://127.0.0.1:5001/analyze';
+
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Something went wrong');
+    render(data);
+    status.textContent = '';
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = err.message;
+  } finally {
+    goBtn.disabled = false;
+  }
+});
+
+function valveDiagram(valves) {
+  if (valves === null) {
+    return '<div class="open-label">—</div>';
+  }
+  if (valves.length === 0) {
+    let cells = '';
+    for (let v = 1; v <= 3; v++) cells += `<div class="valve">${v}</div>`;
+    return `<div class="valves">${cells}</div><div class="open-label">open</div>`;
+  }
+  let cells = '';
+  for (let v = 1; v <= 3; v++) {
+    const on = valves.includes(v) ? ' on' : '';
+    cells += `<div class="valve${on}">${v}</div>`;
+  }
+  return `<div class="valves">${cells}</div>`;
+}
+
+function render(data) {
+  const keys = `
+    <div class="keys">
+      <div class="keycard">
+        <div class="label">Concert Key</div>
+        <div class="value">${data.concert_key}</div>
+        <small>what the recording is in</small>
+      </div>
+      <div class="keycard">
+        <div class="label">Trumpet Key (Bb)</div>
+        <div class="value">${data.trumpet_key}</div>
+        <small>what you read & play</small>
+      </div>
+      <div class="keycard">
+        <div class="label">Confidence</div>
+        <div class="value">${Math.round(data.confidence * 100)}%</div>
+        <small>detection certainty</small>
+      </div>
+    </div>`;
+
+  const scales = data.scales.map(s => {
+    const notes = s.notes.map(n => `
+      <div class="note">
+        <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
+        ${valveDiagram(n.valves)}
+      </div>`).join('');
+    return `<div class="scale"><h2>${s.name}</h2><div class="notes">${notes}</div></div>`;
+  }).join('');
+
+  results.innerHTML = keys + scales;
+}
+</script>
+</body>
+</html>
