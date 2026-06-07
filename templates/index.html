@@ -74,6 +74,8 @@
   }
   .note .nname { font-weight: 700; font-size: 1.1rem; }
   .note .noct { color: var(--muted); font-size: .75rem; font-weight: 400; }
+  .note .concert { color: var(--muted); font-size: .65rem; margin-top: .1rem; }
+  .note .concert b { color: #8fb8ff; font-weight: 600; }
   .valves { display: flex; gap: 5px; justify-content: center; margin-top: .5rem; }
   .valve {
     width: 18px; height: 26px; border-radius: 9px; border: 2px solid var(--accent-dim);
@@ -205,6 +207,7 @@ function render(data) {
     const notes = s.notes.map((n, ni) => `
       <div class="note" data-scale="${si}" data-note="${ni}">
         <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
+        <div class="concert">sounds <b>${n.concert}</b></div>
         ${valveDiagram(n.valves)}
         ${altDiagram(n.alternates)}
       </div>`).join('');

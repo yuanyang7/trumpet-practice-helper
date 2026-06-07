@@ -99,13 +99,28 @@ def _fingering_for(pc, octave):
 
 
 def build_scales(tonic_pc, mode, start_octave=4):
-    """Return a list of scales for the given tonic pitch class and mode.
+    """Return a list of scales for the given (written, Bb-trumpet) tonic and mode.
 
-    Each scale is a dict: {"name", "notes": [{"name", "octave", "valves"}]}.
-    Notes ascend one octave from the tonic, plus the tonic on top.
+    Each note is {"name", "octave", "valves", "alternates", "concert"} where
+    "name" is the written pitch the player reads/fingers and "concert" is the
+    pitch that actually sounds (a whole step lower).
     """
     prefer_flats = (tonic_pc % 12) in _FLAT_TONICS or mode == "minor"
+    # The concert key is a whole step below the written/trumpet key; spell its
+    # notes by the concert key's own flat/sharp preference.
+    concert_tonic = (tonic_pc - 2) % 12
+    concert_flats = (concert_tonic % 12) in _FLAT_TONICS or mode == "minor"
     scale_names = SCALES_FOR_MODE["major" if mode == "major" else "minor"]
+
+    def make_note(pc, octave):
+        primary, alternates = _fingering_for(pc, octave)
+        return {
+            "name": _spell(pc, prefer_flats),
+            "octave": octave,
+            "valves": primary,
+            "alternates": alternates,
+            "concert": _spell((pc - 2) % 12, concert_flats),
+        }
 
     scales = []
     for sname in scale_names:
@@ -119,26 +134,10 @@ def build_scales(tonic_pc, mode, start_octave=4):
             if prev_pc is not None and pc <= prev_pc:
                 octave += 1
             prev_pc = pc
-            primary, alternates = _fingering_for(pc, octave)
-            notes.append(
-                {
-                    "name": _spell(pc, prefer_flats),
-                    "octave": octave,
-                    "valves": primary,
-                    "alternates": alternates,
-                }
-            )
+            notes.append(make_note(pc, octave))
         # add the tonic an octave up to close the scale
         top_oct = octave + (1 if (tonic_pc % 12) <= prev_pc else 0)
-        primary, alternates = _fingering_for(tonic_pc, top_oct)
-        notes.append(
-            {
-                "name": _spell(tonic_pc, prefer_flats),
-                "octave": top_oct,
-                "valves": primary,
-                "alternates": alternates,
-            }
-        )
+        notes.append(make_note(tonic_pc, top_oct))
         scales.append({"name": sname, "notes": notes})
     return scales
 
