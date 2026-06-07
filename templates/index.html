@@ -40,17 +40,24 @@
     color: #1a1206; font-weight: 600; font-size: 1rem; cursor: pointer;
   }
   button:disabled { opacity: .5; cursor: progress; }
-  .force {
-    display: flex; align-items: center; gap: .4rem; justify-content: center;
-    color: var(--muted); font-size: .85rem; margin: 0 0 1rem; cursor: pointer;
+  .loadrow {
+    display: flex; align-items: center; gap: .5rem; justify-content: center;
+    color: var(--muted); font-size: .85rem; margin: 0 0 1rem; flex-wrap: wrap;
   }
-  .songtitle { text-align: center; font-size: 1.2rem; font-weight: 600; margin: .5rem 0 .2rem; }
-  .badge {
-    display: inline-block; font-size: .7rem; padding: .15rem .55rem; border-radius: 999px;
-    text-transform: uppercase; letter-spacing: .04em; margin-left: .5rem; vertical-align: middle;
+  .loadrow select {
+    padding: .4rem .6rem; border-radius: 8px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); font-size: .85rem; max-width: 320px;
   }
-  .badge.cached { background: #1f3a2a; color: #6fd99a; }
-  .badge.fresh { background: var(--accent-dim); color: var(--accent); }
+  .loadrow button, .save-btn {
+    padding: .4rem .9rem; border-radius: 8px; border: 1px solid var(--accent-dim);
+    background: var(--open); color: var(--accent); font-weight: 600; cursor: pointer; font-size: .85rem;
+  }
+  .loadrow button:hover, .save-btn:hover { background: var(--accent-dim); }
+  .songtitle {
+    text-align: center; font-size: 1.2rem; font-weight: 600; margin: .5rem 0 .2rem;
+    display: flex; align-items: center; gap: .6rem; justify-content: center; flex-wrap: wrap;
+  }
+  .save-btn.saved { background: #1f3a2a; color: #6fd99a; border-color: #2f5a40; }
   .status { text-align: center; color: var(--muted); min-height: 1.5rem; }
   .status.error { color: #ff7b72; }
 
@@ -113,7 +120,11 @@
     <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
     <button type="submit" id="go">Analyze</button>
   </form>
-  <label class="force"><input type="checkbox" id="force"> Re-analyze (ignore saved result)</label>
+  <div class="loadrow" id="loadrow" hidden>
+    <span>Saved:</span>
+    <select id="loadSelect"></select>
+    <button type="button" id="loadBtn">Load</button>
+  </div>
   <div class="status" id="status"></div>
   <div id="results"></div>
 </div>
@@ -125,6 +136,15 @@ const form = document.getElementById('form');
 const status = document.getElementById('status');
 const results = document.getElementById('results');
 const goBtn = document.getElementById('go');
+const loadrow = document.getElementById('loadrow');
+const loadSelect = document.getElementById('loadSelect');
+const loadBtn = document.getElementById('loadBtn');
+
+// Resolve API paths against the Flask server. When the page is served over http
+// a relative path works; in a preview pane (file:/about:) we need an absolute URL.
+const ORIGIN = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? '' : 'http://127.0.0.1:5001';
+const api = (path) => ORIGIN + path;
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -135,17 +155,11 @@ form.addEventListener('submit', async (e) => {
   status.textContent = 'Downloading audio and detecting key… (this can take 20–60s)';
   goBtn.disabled = true;
 
-  // Use an absolute URL so it works whether the page is served by Flask or
-  // opened in a preview pane (where a relative URL has no origin to resolve against).
-  const API = (location.protocol === 'http:' || location.protocol === 'https:')
-    ? '/analyze'
-    : 'http://127.0.0.1:5001/analyze';
-
   try {
-    const res = await fetch(API, {
+    const res = await fetch(api('/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, force: document.getElementById('force').checked }),
+      body: JSON.stringify({ url }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
@@ -190,11 +204,11 @@ function altDiagram(alternates) {
 }
 
 function render(data) {
-  const badge = data.cached
-    ? '<span class="badge cached">saved</span>'
-    : '<span class="badge fresh">freshly analyzed</span>';
+  window._lastResult = data;
   const titleHtml = data.title
-    ? `<div class="songtitle">${data.title}${badge}</div>`
+    ? `<div class="songtitle">${data.title}
+         <button class="save-btn" id="saveBtn">💾 Save</button>
+       </div>`
     : '';
 
   const keys = titleHtml + `
@@ -239,7 +253,63 @@ function render(data) {
   }).join('');
 
   results.innerHTML = keys + scales;
+
+  const saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.addEventListener('click', () => saveCurrent(saveBtn));
 }
+
+/* ---- Save / Load saved analyses ---- */
+async function saveCurrent(btn) {
+  if (!window._lastResult) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(api('/save'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(window._lastResult),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    btn.classList.add('saved');
+    btn.textContent = '✓ Saved';
+    refreshSaved();
+  } catch (err) {
+    btn.textContent = '⚠ ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function refreshSaved() {
+  try {
+    const res = await fetch(api('/saved'));
+    const data = await res.json();
+    const songs = data.songs || [];
+    loadSelect.innerHTML = songs.map(s => `<option>${s}</option>`).join('');
+    loadrow.hidden = songs.length === 0;
+  } catch (err) {
+    loadrow.hidden = true;
+  }
+}
+
+loadBtn.addEventListener('click', async () => {
+  const title = loadSelect.value;
+  if (!title) return;
+  status.className = 'status';
+  status.textContent = 'Loading saved analysis…';
+  try {
+    const res = await fetch(api('/load?title=' + encodeURIComponent(title)));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+    render(data);
+    status.textContent = '';
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = err.message;
+  }
+});
+
+refreshSaved();
 
 /* ---- Web Audio scale playback ---- */
 let audioCtx = null;

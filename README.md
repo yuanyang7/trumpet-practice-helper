@@ -11,10 +11,10 @@ It shows:
 - For each scale: **primary + alternate fingerings**, and a **▶ Play** button
   that synthesizes the scale (Web Audio API) with a synced note highlight.
 
-Results are **cached to disk** under `cache/` (one JSON file per song, named after
-the YouTube title). Re-analyzing the same link reads the file instead of
-re-downloading the audio. Tick **"Re-analyze (ignore saved result)"** to force a
-fresh analysis.
+**Save / Load:** click **💾 Save** to store the current result to disk under
+`cache/` (one JSON file per song, named after the YouTube title). Saved songs
+appear in the **Saved** dropdown — pick one and click **Load** to reopen it
+instantly without re-downloading or re-analyzing the audio.
 
 ## Requirements
 

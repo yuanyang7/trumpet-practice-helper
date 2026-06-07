@@ -19,11 +19,11 @@ app = Flask(__name__)
 
 @app.after_request
 def add_cors(resp):
-    # Allow the page to call /analyze even when it's opened from a preview pane
+    # Allow the page to call the API even when opened from a preview pane
     # (a different origin than the Flask server).
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return resp
 
 
@@ -32,8 +32,8 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/analyze", methods=["OPTIONS"])
-def analyze_preflight():
+@app.route("/<path:_any>", methods=["OPTIONS"])
+def cors_preflight(_any):
     return ("", 204)
 
 
@@ -41,25 +41,12 @@ def analyze_preflight():
 def analyze():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
-    force = bool(data.get("force"))
     if not url:
         return jsonify({"error": "Please provide a YouTube URL."}), 400
 
-    try:
-        meta = get_metadata(url)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    title = meta["title"]
-
-    # Serve from cache unless the user asked to re-analyze.
-    if not force:
-        cached = cache.load(title)
-        if cached is not None:
-            cached["cached"] = True
-            return jsonify(cached)
-
     wav_path = None
     try:
+        meta = get_metadata(url)
         wav_path = download_audio(url)
         result = analyze_audio(wav_path)
     except Exception as e:  # surface a readable message to the UI
@@ -73,20 +60,46 @@ def analyze():
     trumpet_pc = fng.transpose_for_trumpet(concert_pc)
     scales = fng.build_scales(trumpet_pc, mode)
 
-    payload = {
-        "title": title,
-        "url": url,
-        "video_id": meta["id"],
-        "concert_key": fng.key_name(concert_pc, mode),
-        "trumpet_key": fng.key_name(trumpet_pc, mode),
-        "mode": mode,
-        "confidence": round(result["confidence"], 3),
-        "bpm": result["bpm"],
-        "scales": scales,
-    }
-    cache.save(title, payload)
-    payload["cached"] = False
-    return jsonify(payload)
+    return jsonify(
+        {
+            "title": meta["title"],
+            "url": url,
+            "video_id": meta["id"],
+            "concert_key": fng.key_name(concert_pc, mode),
+            "trumpet_key": fng.key_name(trumpet_pc, mode),
+            "mode": mode,
+            "confidence": round(result["confidence"], 3),
+            "bpm": result["bpm"],
+            "scales": scales,
+        }
+    )
+
+
+@app.route("/saved", methods=["GET"])
+def saved():
+    """List the titles of all saved analyses."""
+    return jsonify({"songs": cache.list_saved()})
+
+
+@app.route("/save", methods=["POST"])
+def save():
+    """Save a result dict to disk, named after its song title (user-initiated)."""
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "Nothing to save (missing title)."}), 400
+    path = cache.save(title, data)
+    return jsonify({"ok": True, "title": title, "file": os.path.basename(path)})
+
+
+@app.route("/load", methods=["GET"])
+def load():
+    """Load a previously saved analysis by title."""
+    title = (request.args.get("title") or "").strip()
+    data = cache.load(title)
+    if data is None:
+        return jsonify({"error": f"No saved analysis named '{title}'."}), 404
+    return jsonify(data)
 
 
 if __name__ == "__main__":
