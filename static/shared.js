@@ -183,6 +183,69 @@ function buildScales(tonicPc, mode, startOctave = 4) {
   });
 }
 
+/* ---------------- Chromatic display + scale highlighting ----------------
+   The note display is a fixed chromatic reference: every semitone across three
+   octaves (home-1, home, home+1). Picking a scale highlights the notes that
+   belong to it; "Play" runs that scale once, ascending, in the home octave. */
+const BASE_OCTAVE = 4;       // the "home" (octave 0) row; rows above/below are ±1
+
+// Scales the user can pick to practice. "Chromatic" highlights every note.
+const PRACTICE_SCALES = [
+  'Chromatic',
+  'Major (Ionian)',
+  'Natural Minor (Aeolian)',
+  'Harmonic Minor',
+  'Melodic Minor (asc)',
+  'Major Pentatonic',
+  'Minor Pentatonic',
+  'Blues',
+];
+
+// Pitch classes (0-11) belonging to `scaleName` rooted at `tonicPc`.
+function scalePcs(tonicPc, scaleName) {
+  return new Set(SCALE_FORMULAS[scaleName].map(s => (tonicPc + s) % 12));
+}
+
+// Build the chromatic reference grid: three octave rows (home-1, home, home+1),
+// each holding all 12 semitones C..B as written (Bb-trumpet) pitches.
+function buildChromatic(tonicPc, mode, baseOctave = BASE_OCTAVE) {
+  const preferFlats = FLAT_TONICS.has(tonicPc % 12) || mode === 'minor';
+  const concertFlats = FLAT_TONICS.has((tonicPc - 2 + 12) % 12) || mode === 'minor';
+  return [baseOctave - 1, baseOctave, baseOctave + 1].map(octave => {
+    const notes = [];
+    for (let pc = 0; pc < 12; pc++) {
+      const [primary, alternates] = fingeringFor(pc, octave);
+      notes.push({
+        pc,
+        name: spell(pc, preferFlats),
+        octave,
+        valves: primary,
+        alternates,
+        concert: spell((pc - 2 + 12) % 12, concertFlats),
+      });
+    }
+    return { octave, rel: octave - baseOctave, notes };
+  });
+}
+
+// The selected scale played once, ascending, starting at the tonic in the home
+// octave and resolving on the octave tonic above.
+function scalePlayNotes(tonicPc, mode, scaleName, baseOctave = BASE_OCTAVE) {
+  const preferFlats = FLAT_TONICS.has(tonicPc % 12) || mode === 'minor';
+  const notes = [];
+  let prevPc = null;
+  let octave = baseOctave;
+  for (const semitones of SCALE_FORMULAS[scaleName]) {
+    const pc = (tonicPc + semitones) % 12;
+    if (prevPc !== null && pc <= prevPc) octave += 1;
+    prevPc = pc;
+    notes.push({ pc, octave, name: spell(pc, preferFlats) });
+  }
+  const topOct = octave + ((tonicPc % 12) <= prevPc ? 1 : 0);
+  notes.push({ pc: tonicPc % 12, octave: topOct, name: spell(tonicPc, preferFlats) });
+  return notes;
+}
+
 const COMMON_TEMPOS = [40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
 
 // Builds <option> tags for the metronome dropdown: the common tempos plus the
@@ -203,10 +266,14 @@ function renderResult(data, opts) {
   opts = opts || {};
   window._lastOpts = opts;
   stopMetronome();
-  if (!opts._fromEdit) window._detected = JSON.parse(JSON.stringify(data));
+  clearRange();          // a previous song's range-loop watcher
+  stopBarTicker();       // a previous song's position display ticker
+  if (!opts._fromEdit) {
+    window._detected = JSON.parse(JSON.stringify(data));
+    window._selectedScale = 'Chromatic';  // reset to "show all" for each new song
+  }
   const results = document.getElementById('results');
   window._lastResult = data;
-  window._scales = data.scales;
 
   const saveBtn = opts.onSave
     ? `<button class="save-btn" id="saveBtn">💾 Save</button>` : '';
@@ -250,7 +317,7 @@ function renderResult(data, opts) {
       </div>
       <div class="keycard">
         <div class="label">Tempo</div>
-        <div class="value">${data.bpm} <small style="font-size:1rem">BPM</small></div>
+        <div class="value"><span id="bpmValue">${Math.round(data.bpm)}</span> <small style="font-size:1rem">BPM</small></div>
         <small>estimated</small>
         <div class="metro">
           <select id="metroSelect">${tempoOptions(data.bpm)}</select>
@@ -264,23 +331,44 @@ function renderResult(data, opts) {
       </div>
     </div>`;
 
-  const scales = data.scales.map((s, si) => {
-    const notes = s.notes.map((n, ni) => `
-      <div class="note" data-scale="${si}" data-note="${ni}">
+  const trumpetPc = transposeForTrumpet(concertPc);
+  window._scaleTonic = trumpetPc;
+  window._scaleMode = mode;
+  const selected = window._selectedScale || 'Chromatic';
+  const inScale = scalePcs(trumpetPc, selected);
+
+  const relLabel = { '-1': '−1 octave', '0': 'home octave', '1': '+1 octave' };
+  const rows = buildChromatic(trumpetPc, mode).map(row => {
+    const cells = row.notes.map(n => {
+      const cls = inScale.has(n.pc) ? 'note in-scale' : 'note dimmed';
+      return `<div class="${cls}" data-pc="${n.pc}" data-oct="${n.octave}">
         <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
         <div class="concert">sounds <b>${n.concert}</b></div>
         ${valveDiagram(n.valves)}
         ${altDiagram(n.alternates)}
-      </div>`).join('');
-    return `<div class="scale">
-      <h2>${s.name}
-        <button class="play-btn" data-scale="${si}">▶ Play</button>
-      </h2>
-      <div class="notes">${notes}</div>
+      </div>`;
+    }).join('');
+    return `<div class="octave-row${row.rel === 0 ? ' home' : ''}">
+      <div class="octave-label">${relLabel[String(row.rel)]}</div>
+      <div class="notes">${cells}</div>
     </div>`;
   }).join('');
 
-  results.innerHTML = keys + scales;
+  const pickerOpts = PRACTICE_SCALES.map(s =>
+    `<option value="${s}"${s === selected ? ' selected' : ''}>${s}</option>`).join('');
+
+  const scales = `<div class="scale chromatic">
+    <h2>Notes &amp; Scales
+      <select class="scale-picker" id="scalePicker">${pickerOpts}</select>
+      <button class="play-btn" id="scalePlay">▶ Play</button>
+    </h2>
+    ${rows}
+  </div>`;
+
+  results.innerHTML = keys + transportPanel(data) + scales;
+
+  if (data.video_id) loadYouTube(data.video_id);
+  else if (window._ytPlayer && window._ytPlayer.pauseVideo) window._ytPlayer.pauseVideo();
 
   const btn = document.getElementById('saveBtn');
   if (btn && opts.onSave) btn.addEventListener('click', () => opts.onSave(data, btn));
@@ -327,18 +415,26 @@ function playTone(freq, start, dur) {
   osc.stop(start + dur);
 }
 
-async function playScale(scaleIndex, btn) {
+// Re-highlight the chromatic grid for the currently selected scale, in place
+// (no full re-render, so the metronome and edit panel keep their state).
+function updateScaleHighlight() {
+  const inScale = scalePcs(window._scaleTonic, window._selectedScale || 'Chromatic');
+  document.querySelectorAll('.chromatic .note').forEach(c => {
+    const member = inScale.has(parseInt(c.dataset.pc, 10));
+    c.classList.toggle('in-scale', member);
+    c.classList.toggle('dimmed', !member);
+  });
+}
+
+async function playSelectedScale(btn) {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   await audioCtx.resume();
 
   const myToken = ++playToken;
-  document.querySelectorAll('.play-btn').forEach(b => {
-    b.classList.remove('playing'); b.textContent = '▶ Play';
-  });
   btn.classList.add('playing');
   btn.textContent = '■ Stop';
 
-  const notes = window._scales[scaleIndex].notes;
+  const notes = scalePlayNotes(window._scaleTonic, window._scaleMode, window._selectedScale || 'Chromatic');
   const noteDur = 0.4;
   const step = 0.42;
   const t0 = audioCtx.currentTime + 0.05;
@@ -347,40 +443,324 @@ async function playScale(scaleIndex, btn) {
     playTone(noteToFreq(n.name, n.octave), t0 + i * step, noteDur);
   });
 
-  const cards = document.querySelectorAll(`.note[data-scale="${scaleIndex}"]`);
+  // Light up the matching chromatic cell as each note sounds.
   for (let i = 0; i < notes.length; i++) {
     setTimeout(() => {
       if (myToken !== playToken) return;
-      cards.forEach(c => c.classList.remove('active'));
-      const c = document.querySelector(`.note[data-scale="${scaleIndex}"][data-note="${i}"]`);
+      document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
+      const n = notes[i];
+      const c = document.querySelector(`.note[data-pc="${n.pc}"][data-oct="${n.octave}"]`);
       if (c) c.classList.add('active');
     }, i * step * 1000);
   }
   setTimeout(() => {
     if (myToken !== playToken) return;
-    cards.forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
     btn.classList.remove('playing');
     btn.textContent = '▶ Play';
   }, notes.length * step * 1000 + 200);
 }
 
+// Play a single note card (click-to-hear). Computes the frequency straight from
+// the card's pitch class + octave, so it works even for out-of-range cells.
+async function playNote(card) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();
+  const pc = parseInt(card.dataset.pc, 10);
+  const octave = parseInt(card.dataset.oct, 10);
+  const midi = (octave + 1) * 12 + pc + WRITTEN_TO_CONCERT;
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  playTone(freq, audioCtx.currentTime + 0.02, 0.45);
+  card.classList.add('active');
+  setTimeout(() => card.classList.remove('active'), 450);
+}
+
 function stopPlayback() {
   playToken++;
-  document.querySelectorAll('.play-btn').forEach(b => {
-    b.classList.remove('playing'); b.textContent = '▶ Play';
-  });
+  const sp = document.getElementById('scalePlay');
+  if (sp) { sp.classList.remove('playing'); sp.textContent = '▶ Play'; }
   document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
 }
 
-// Delegated play/stop handling — attach once per page.
+// Delegated scale play/note-click + scale-picker handling — attach once per page.
+// (Transport/measure controls are handled separately in wireTransport.)
 function wirePlayback() {
-  document.getElementById('results').addEventListener('click', (e) => {
-    const btn = e.target.closest('.play-btn');
-    if (!btn) return;
-    const idx = parseInt(btn.dataset.scale, 10);
-    if (btn.classList.contains('playing')) stopPlayback();
-    else playScale(idx, btn);
+  const results = document.getElementById('results');
+  results.addEventListener('click', (e) => {
+    const btn = e.target.closest('#scalePlay');
+    if (btn) {
+      if (btn.classList.contains('playing')) stopPlayback();
+      else playSelectedScale(btn);
+      return;
+    }
+    const note = e.target.closest('.note');
+    if (note) playNote(note);
+  });
+  results.addEventListener('change', (e) => {
+    if (e.target.id !== 'scalePicker') return;
+    window._selectedScale = e.target.value;
+    stopPlayback();
+    updateScaleHighlight();
+  });
+}
+
+/* ---------------- Song playback + measures (小节) ----------------
+   We drive a hidden YouTube IFrame player (by the stored video_id) as the audio
+   engine, and compute bar boundaries from BPM + a "bar 1" offset, assuming a
+   steady tempo and a chosen beats-per-bar. The offset is re-anchorable by ear,
+   and BPM is editable (incl. ×2 / ÷2) to fix half/double-tempo detection. */
+const DEFAULT_BEATS_PER_BAR = 4;
+let ytRangeTimer = null;   // interval watching for the end of a play-range/loop
+let ytTicker = null;       // interval updating the "current bar" readout
+
+// Bar math reads straight from the live result object, so re-anchoring the
+// offset or editing BPM takes effect immediately and persists when saved.
+function songMeta() {
+  const d = window._lastResult || {};
+  return {
+    bpm: Number(d.bpm) || 120,
+    offset: Number(d.beat_offset) || 0,
+    beatsPerBar: Number(d.beats_per_measure) || DEFAULT_BEATS_PER_BAR,
+  };
+}
+function barLenSec(m) { return m.beatsPerBar * 60 / m.bpm; }
+// Bar lines are a repeating grid; only the phase within a bar matters. Reduce
+// the offset into [0, barLen) so bar 1 starts within the first measure (i.e.
+// near the very beginning) while staying aligned to the detected beat.
+function barPhase(m) { const L = barLenSec(m); return ((m.offset % L) + L) % L; }
+function barStartSec(m, bar) { return barPhase(m) + (bar - 1) * barLenSec(m); }   // bar is 1-indexed
+function secToBar(m, t) { return Math.floor((t - barPhase(m)) / barLenSec(m)) + 1; }
+
+function fmtTime(s) {
+  s = Math.max(0, s);
+  const mm = Math.floor(s / 60);
+  const ss = Math.floor(s % 60);
+  return `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+}
+
+// The player + measure controls, rendered only when we have a video_id.
+function transportPanel(data) {
+  if (!data.video_id) return '';
+  const beats = Number(data.beats_per_measure) || DEFAULT_BEATS_PER_BAR;
+  const initAlign = barPhase({ bpm: Number(data.bpm) || 120, offset: Number(data.beat_offset) || 0, beatsPerBar: beats });
+  const beatOpts = [2, 3, 4, 6].map(n =>
+    `<option value="${n}"${n === beats ? ' selected' : ''}>${n}</option>`).join('');
+  return `<div class="player">
+    <div class="transport">
+      <button class="t-play" data-act="playpause" id="ppBtn">▶ Play</button>
+      <span class="nowbar" id="nowBar">bar 1</span>
+      <button class="t-btn" data-act="prevbar">⏮ bar</button>
+      <button class="t-btn" data-act="nextbar">bar ⏭</button>
+      <label>Go to bar <input type="number" id="barJump" class="t-num" min="1" value="1"></label>
+      <button class="t-btn" data-act="jump">Go</button>
+      <button class="t-btn" data-act="showvideo" id="showVideoBtn">Show video</button>
+    </div>
+    <div class="transport">
+      <label>Loop bars <input type="number" id="barFrom" class="t-num" min="1" value="1"></label>
+      <label>–<input type="number" id="barTo" class="t-num" min="1" value="4"></label>
+      <label><input type="checkbox" id="barLoop" checked> loop</label>
+      <button class="t-play" data-act="playrange" id="rangeBtn">▶ Play range</button>
+      <button class="t-btn" data-act="anchor" title="Tap on a downbeat to align the bar grid to the music">⚓ Align beat here</button>
+      <span class="offgrp" title="Nudge the bar grid to line it up by ear">
+        <button class="t-btn" data-act="offminus">−</button>
+        <span class="offval" id="offVal">align ${initAlign.toFixed(2)}s</span>
+        <button class="t-btn" data-act="offplus">+</button>
+      </span>
+      <label>Beats/bar <select id="beatsPerBar" class="t-sel">${beatOpts}</select></label>
+      <label>BPM <input type="number" id="barBpm" class="t-num" min="20" max="320" step="0.1" value="${(Number(data.bpm) || 120).toFixed(1)}"></label>
+      <button class="t-btn" data-act="bpmdec" title="Fine −0.1 BPM — removes drift over the whole song">−</button>
+      <button class="t-btn" data-act="bpminc" title="Fine +0.1 BPM — removes drift over the whole song">+</button>
+      <button class="t-btn" data-act="bpmhalf" title="Half tempo">÷2</button>
+      <button class="t-btn" data-act="bpm2" title="Double tempo">×2</button>
+    </div>
+  </div>`;
+}
+
+/* ---- YouTube IFrame player (hidden audio engine) ---- */
+function ensureYtHost() {
+  if (document.getElementById('ytHost')) return;
+  const host = document.createElement('div');
+  host.id = 'ytHost';
+  host.className = 'yt-host hidden';
+  const inner = document.createElement('div');
+  inner.id = 'ytplayer';
+  host.appendChild(inner);
+  document.body.appendChild(host);
+}
+
+function ensureYouTubeAPI() {
+  if (window.YT && window.YT.Player) return;
+  if (document.getElementById('yt-iframe-api')) return;  // already loading
+  const tag = document.createElement('script');
+  tag.id = 'yt-iframe-api';
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+}
+
+// Called by the IFrame API once it finishes loading.
+window.onYouTubeIframeAPIReady = function () {
+  window._ytReady = true;
+  if (window._pendingVideoId) loadYouTube(window._pendingVideoId);
+};
+
+function loadYouTube(videoId) {
+  ensureYtHost();
+  if (!(window._ytReady && window.YT && window.YT.Player)) {
+    window._pendingVideoId = videoId;   // create once the API is ready
+    ensureYouTubeAPI();
+    return;
+  }
+  if (window._ytPlayer && window._ytPlayer.cueVideoById) {
+    if (window._ytCurrentVideo !== videoId) {
+      window._ytCurrentVideo = videoId;
+      window._ytPlayer.cueVideoById(videoId);
+    }
+  } else {
+    window._ytCurrentVideo = videoId;
+    window._ytPlayer = new YT.Player('ytplayer', {
+      videoId,
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+      events: { onReady: startBarTicker, onStateChange: onYtStateChange },
+    });
+  }
+  startBarTicker();
+}
+
+function onYtStateChange(e) {
+  const btn = document.getElementById('ppBtn');
+  if (!btn || !window.YT) return;
+  const playing = e.data === YT.PlayerState.PLAYING;
+  btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  btn.classList.toggle('playing', playing);
+}
+
+function startBarTicker() {
+  stopBarTicker();
+  ytTicker = setInterval(updateNowBar, 200);
+  updateNowBar();
+}
+function stopBarTicker() {
+  if (ytTicker) { clearInterval(ytTicker); ytTicker = null; }
+}
+function updateNowBar() {
+  const el = document.getElementById('nowBar');
+  const p = window._ytPlayer;
+  if (!el || !p || !p.getCurrentTime) return;
+  let t;
+  try { t = p.getCurrentTime(); } catch (_) { return; }
+  const m = songMeta();
+  const bar = Math.max(1, secToBar(m, t));
+  el.textContent = `bar ${bar} · ${fmtTime(t)}`;
+}
+
+function clearRange() {
+  if (ytRangeTimer) { clearInterval(ytRangeTimer); ytRangeTimer = null; }
+}
+
+function seekToBar(bar, play) {
+  const p = window._ytPlayer;
+  if (!p || !p.seekTo) return;
+  p.seekTo(barStartSec(songMeta(), Math.max(1, bar)), true);
+  if (play) p.playVideo();
+}
+
+function stepBar(delta) {
+  const p = window._ytPlayer;
+  if (!p || !p.getCurrentTime) return;
+  clearRange();
+  const m = songMeta();
+  seekToBar(Math.max(1, secToBar(m, p.getCurrentTime()) + delta), true);
+}
+
+function playRange(fromBar, toBar, loop) {
+  const p = window._ytPlayer;
+  if (!p || !p.seekTo) return;
+  clearRange();
+  // Stash the range, not absolute times, so nudging the offset / editing BPM
+  // mid-loop re-aligns the next pass live.
+  window._range = { lo: Math.max(1, Math.min(fromBar, toBar)), hi: Math.max(fromBar, toBar), loop };
+  p.seekTo(barStartSec(songMeta(), window._range.lo), true);
+  p.playVideo();
+  ytRangeTimer = setInterval(() => {
+    const pl = window._ytPlayer;
+    if (!pl || !pl.getCurrentTime || !window._range) { clearRange(); return; }
+    const m = songMeta();
+    const endT = barStartSec(m, window._range.hi + 1);   // through the end of the last bar
+    if (pl.getCurrentTime() >= endT - 0.03) {
+      if (window._range.loop) pl.seekTo(barStartSec(m, window._range.lo), true);
+      else { pl.pauseVideo(); clearRange(); }
+    }
+  }, 40);
+}
+
+const OFFSET_STEP = 0.05;   // seconds per nudge
+function updateOffsetLabel() {
+  const el = document.getElementById('offVal');
+  if (el) el.textContent = `align ${barPhase(songMeta()).toFixed(2)}s`;
+}
+function setOffset(t) {
+  if (!window._lastResult) return;
+  window._lastResult.beat_offset = Math.max(0, t);
+  updateOffsetLabel();
+  updateNowBar();
+}
+function nudgeOffset(delta) { setOffset((Number((window._lastResult || {}).beat_offset) || 0) + delta); }
+
+function setBpm(newBpm) {
+  newBpm = Math.round((Number(newBpm) || songMeta().bpm) * 1000) / 1000;
+  newBpm = Math.min(320, Math.max(20, newBpm));
+  if (window._lastResult) window._lastResult.bpm = newBpm;
+  const bpmInput = document.getElementById('barBpm');
+  if (bpmInput) bpmInput.value = (Math.round(newBpm * 10) / 10).toFixed(1);
+  const bpmVal = document.getElementById('bpmValue');
+  if (bpmVal) bpmVal.textContent = Math.round(newBpm);
+  updateNowBar();
+}
+
+function toggleVideo(btn) {
+  const host = document.getElementById('ytHost');
+  if (!host) return;
+  const showing = host.classList.toggle('shown');
+  host.classList.toggle('hidden', !showing);
+  btn.textContent = showing ? 'Hide video' : 'Show video';
+}
+
+// Delegated transport handling — attach once per page.
+function wireTransport() {
+  const results = document.getElementById('results');
+  results.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const act = el.dataset.act;
+    if (act === 'showvideo') { toggleVideo(el); return; }
+    const p = window._ytPlayer;
+    if (!p) return;
+    const valInt = (id, dflt) => Math.max(1, parseInt((document.getElementById(id) || {}).value, 10) || dflt);
+    if (act === 'playpause') {
+      const st = p.getPlayerState ? p.getPlayerState() : -1;
+      if (st === 1) p.pauseVideo(); else p.playVideo();
+    } else if (act === 'prevbar') { stepBar(-1); }
+    else if (act === 'nextbar') { stepBar(1); }
+    else if (act === 'jump') { clearRange(); seekToBar(valInt('barJump', 1), true); }
+    else if (act === 'playrange') {
+      playRange(valInt('barFrom', 1), valInt('barTo', 1),
+        (document.getElementById('barLoop') || {}).checked);
+    } else if (act === 'anchor') {
+      if (p.getCurrentTime) setOffset(p.getCurrentTime());
+    } else if (act === 'offminus') { nudgeOffset(-OFFSET_STEP); }
+    else if (act === 'offplus') { nudgeOffset(OFFSET_STEP); }
+    else if (act === 'bpm2') { setBpm(songMeta().bpm * 2); }
+    else if (act === 'bpmhalf') { setBpm(songMeta().bpm / 2); }
+    else if (act === 'bpminc') { setBpm(songMeta().bpm + 0.1); }
+    else if (act === 'bpmdec') { setBpm(songMeta().bpm - 0.1); }
+  });
+  results.addEventListener('change', (e) => {
+    if (e.target.id === 'barBpm') setBpm(e.target.value);
+    else if (e.target.id === 'beatsPerBar') {
+      if (window._lastResult) window._lastResult.beats_per_measure = parseInt(e.target.value, 10) || DEFAULT_BEATS_PER_BAR;
+      updateNowBar();
+    }
   });
 }
 

@@ -78,6 +78,7 @@ def analyze():
             "confidence": round(result["confidence"], 3),
             "method": method,
             "bpm": result["bpm"],
+            "beat_offset": result.get("beat_offset", 0.0),
             "scales": scales,
         }
     )

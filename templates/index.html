@@ -42,6 +42,7 @@ const methodSelect = document.getElementById('method');
 wirePlayback();
 wireMetronome();
 wireEdit();
+wireTransport();
 
 // Hide the CNN option if the server doesn't have madmom installed.
 fetch(ANALYZE + '/methods').then(r => r.json()).then(({ methods }) => {

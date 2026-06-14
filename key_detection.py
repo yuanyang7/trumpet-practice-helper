@@ -93,9 +93,10 @@ def analyze(audio_path, method="krumhansl"):
     GiantSteps-trained CNN via madmom, generally more accurate but slower and
     only available if madmom is installed).
 
-    Returns a dict: {pitch_class, mode, confidence, bpm}.
+    Returns a dict: {pitch_class, mode, confidence, bpm, beat_offset}.
     pitch_class is 0-11 (0 = C); mode is "major"/"minor"; confidence ~0-1;
-    bpm is the estimated tempo in beats per minute (rounded int).
+    bpm is the estimated tempo (float); beat_offset is the time in seconds of
+    the first detected beat (a default "bar 1" anchor).
     """
     y, sr = librosa.load(audio_path, sr=22050, mono=True)
 
@@ -109,7 +110,12 @@ def analyze(audio_path, method="krumhansl"):
     else:
         pc, mode, conf = _analyze_krumhansl(y_harmonic, sr)
 
-    tempo, _ = librosa.beat.beat_track(y=y_percussive, sr=sr)
-    bpm = int(round(float(np.atleast_1d(tempo)[0])))
+    tempo, beats = librosa.beat.beat_track(y=y_percussive, sr=sr)
+    bpm = round(float(np.atleast_1d(tempo)[0]), 3)
+    # Time of the first detected beat — a sensible default "bar 1" anchor the
+    # user can re-align by ear in the player. 0.0 if no beats were found.
+    beat_times = librosa.frames_to_time(beats, sr=sr)
+    beat_offset = round(float(beat_times[0]), 3) if len(beat_times) else 0.0
 
-    return {"pitch_class": pc, "mode": mode, "confidence": conf, "bpm": bpm}
+    return {"pitch_class": pc, "mode": mode, "confidence": conf,
+            "bpm": bpm, "beat_offset": beat_offset}
