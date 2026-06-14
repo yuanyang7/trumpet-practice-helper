@@ -10,7 +10,7 @@ import shutil
 from flask import Flask, render_template, request, jsonify
 
 from audio import download_audio, get_metadata
-from key_detection import analyze as analyze_audio
+from key_detection import analyze as analyze_audio, METHODS
 import fingerings as fng
 
 app = Flask(__name__)
@@ -36,18 +36,26 @@ def cors_preflight(_any):
     return ("", 204)
 
 
+@app.route("/methods")
+def methods():
+    return jsonify({"methods": METHODS})
+
+
 @app.route("/analyze", methods=["POST"])
 def analyze():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
+    method = data.get("method") or METHODS[0]
     if not url:
         return jsonify({"error": "Please provide a YouTube URL."}), 400
+    if method not in METHODS:
+        return jsonify({"error": f"Unknown detection method '{method}'."}), 400
 
     wav_path = None
     try:
         meta = get_metadata(url)
         wav_path = download_audio(url)
-        result = analyze_audio(wav_path)
+        result = analyze_audio(wav_path, method=method)
     except Exception as e:  # surface a readable message to the UI
         return jsonify({"error": str(e)}), 500
     finally:
@@ -68,6 +76,7 @@ def analyze():
             "trumpet_key": fng.key_name(trumpet_pc, mode),
             "mode": mode,
             "confidence": round(result["confidence"], 3),
+            "method": method,
             "bpm": result["bpm"],
             "scales": scales,
         }

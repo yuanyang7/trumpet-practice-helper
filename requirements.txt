@@ -1,5 +1,11 @@
 flask
 librosa
 soundfile
-numpy
+numpy<2
 yt-dlp
+
+# Optional: CNN-based key detection (method="cnn"). Needs numpy<2 and a C
+# compiler. If unavailable, the app falls back to the Krumhansl-Schmuckler
+# method automatically.
+Cython<3
+madmom

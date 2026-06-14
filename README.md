@@ -52,6 +52,18 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
 
+`madmom` (the optional CNN key-detection backend) needs Cython available
+*before* it builds, and doesn't support build isolation. If its install
+fails, run:
+
+```bash
+./venv/bin/pip install "numpy<2" "Cython<3" wheel
+./venv/bin/pip install --no-build-isolation madmom
+```
+
+The app works fine without it — the key-detection method picker just falls
+back to "Krumhansl-Schmuckler" only.
+
 ## Run
 
 ```bash

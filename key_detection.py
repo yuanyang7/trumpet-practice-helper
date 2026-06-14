@@ -8,6 +8,22 @@ profiles. The best-correlating key wins.
 import numpy as np
 import librosa
 
+# Optional CNN-based key detection (madmom). madmom 0.16 predates numpy's
+# removal of the np.float/np.int/etc. aliases, so restore them before import
+# if needed. If madmom isn't installed (it has a finicky build), we fall back
+# to Krumhansl-Schmuckler only.
+try:
+    if not hasattr(np, "float"):
+        np.float = float
+        np.int = int
+        np.bool = bool
+        np.object = object
+        np.complex = complex
+    from madmom.features.key import CNNKeyRecognitionProcessor, key_prediction_to_label
+    CNN_AVAILABLE = True
+except ImportError:
+    CNN_AVAILABLE = False
+
 # Krumhansl-Kessler key profiles (perceived stability of each scale degree).
 _MAJOR_PROFILE = np.array(
     [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
@@ -29,18 +45,19 @@ def _correlate(chroma_vector, profile):
     return np.array(results)
 
 
-def analyze(audio_path):
-    """Analyze an audio file once and return key + tempo.
+# madmom key labels use the same note spellings as fingerings.py's _spell().
+_NOTE_TO_PC = {
+    "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5,
+    "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8, "A": 9, "A#": 10, "Bb": 10, "B": 11,
+}
 
-    Returns a dict: {pitch_class, mode, confidence, bpm}.
-    pitch_class is 0-11 (0 = C); mode is "major"/"minor"; confidence ~0-1;
-    bpm is the estimated tempo in beats per minute (rounded int).
-    """
-    y, sr = librosa.load(audio_path, sr=22050, mono=True)
+# Methods available for the `method` argument of analyze(). The first entry
+# is the default; CNN is preferred when available since it's generally more
+# accurate than Krumhansl-Schmuckler.
+METHODS = ["cnn", "krumhansl"] if CNN_AVAILABLE else ["krumhansl"]
 
-    # Separate harmonic (for pitch) and percussive (for tempo) components.
-    y_harmonic, y_percussive = librosa.effects.hpss(y)
 
+def _analyze_krumhansl(y_harmonic, sr):
     chroma = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr)
     chroma_mean = chroma.mean(axis=1)
 
@@ -53,9 +70,44 @@ def analyze(audio_path):
     best_minor = minor_corrs[best_minor_pc]
 
     if best_major >= best_minor:
-        pc, mode, conf = best_major_pc, "major", float(best_major)
+        return best_major_pc, "major", float(best_major)
+    return best_minor_pc, "minor", float(best_minor)
+
+
+def _analyze_cnn(audio_path):
+    """CNN key detection (madmom, trained on the GiantSteps dataset).
+
+    Generally more accurate than Krumhansl-Schmuckler, especially for songs
+    where the relative/parallel key gets picked instead of the true key.
+    """
+    pred = CNNKeyRecognitionProcessor()(audio_path)
+    label = key_prediction_to_label(pred)
+    root, mode = label.split(" ")
+    return _NOTE_TO_PC[root], mode, float(np.atleast_2d(pred)[0].max())
+
+
+def analyze(audio_path, method="krumhansl"):
+    """Analyze an audio file once and return key + tempo.
+
+    `method` is "krumhansl" (default, fast chroma-correlation) or "cnn" (a
+    GiantSteps-trained CNN via madmom, generally more accurate but slower and
+    only available if madmom is installed).
+
+    Returns a dict: {pitch_class, mode, confidence, bpm}.
+    pitch_class is 0-11 (0 = C); mode is "major"/"minor"; confidence ~0-1;
+    bpm is the estimated tempo in beats per minute (rounded int).
+    """
+    y, sr = librosa.load(audio_path, sr=22050, mono=True)
+
+    # Separate harmonic (for pitch) and percussive (for tempo) components.
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+
+    if method == "cnn":
+        if not CNN_AVAILABLE:
+            raise ValueError("CNN key detection isn't available (madmom not installed).")
+        pc, mode, conf = _analyze_cnn(audio_path)
     else:
-        pc, mode, conf = best_minor_pc, "minor", float(best_minor)
+        pc, mode, conf = _analyze_krumhansl(y_harmonic, sr)
 
     tempo, _ = librosa.beat.beat_track(y=y_percussive, sr=sr)
     bpm = int(round(float(np.atleast_1d(tempo)[0])))

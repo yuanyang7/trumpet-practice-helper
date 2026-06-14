@@ -15,6 +15,10 @@
 <div class="wrap">
   <form class="form" id="form">
     <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
+    <select id="method" title="Key detection method">
+      <option value="cnn">CNN / GiantSteps (more accurate)</option>
+      <option value="krumhansl">Krumhansl-Schmuckler (fast)</option>
+    </select>
     <button type="submit" id="go">Analyze</button>
   </form>
   <div class="status" id="status"></div>
@@ -33,9 +37,18 @@ const goBtn = document.getElementById('go');
 // Analyze runs on the Mac (yt-dlp/ffmpeg/librosa). "" = same origin.
 const ANALYZE = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
 
+const methodSelect = document.getElementById('method');
+
 wirePlayback();
 wireMetronome();
 wireEdit();
+
+// Hide the CNN option if the server doesn't have madmom installed.
+fetch(ANALYZE + '/methods').then(r => r.json()).then(({ methods }) => {
+  if (!methods.includes('cnn')) {
+    methodSelect.querySelector('option[value="cnn"]').remove();
+  }
+}).catch(() => {});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -50,7 +63,7 @@ form.addEventListener('submit', async (e) => {
     const res = await fetch(ANALYZE + '/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, method: methodSelect.value }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
