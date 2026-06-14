@@ -52,6 +52,31 @@ button:disabled { opacity: .5; cursor: progress; }
   display: flex; align-items: center; gap: .6rem; justify-content: center; flex-wrap: wrap;
 }
 .save-btn.saved { background: #1f3a2a; color: #6fd99a; border-color: #2f5a40; }
+.edit-btn {
+  padding: .4rem .9rem; border-radius: 8px; border: 1px solid var(--accent-dim);
+  background: var(--open); color: var(--accent); font-weight: 600; cursor: pointer; font-size: .85rem;
+}
+.edit-btn:hover { background: var(--accent-dim); }
+
+.editbar {
+  display: flex; gap: .8rem; align-items: center; justify-content: center; flex-wrap: wrap;
+  max-width: 720px; margin: 0 auto 1.2rem; padding: .8rem 1rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border); font-size: .85rem; color: var(--muted);
+}
+.editbar[hidden] { display: none; }
+.editbar label { display: flex; align-items: center; gap: .4rem; }
+.editbar select, .editbar input {
+  padding: .35rem .5rem; border-radius: 8px; background: var(--open); color: var(--text);
+  border: 1px solid var(--border); font-size: .85rem;
+}
+.editbar input[type=number] { width: 4.5rem; }
+.editbar .edit-apply, .editbar .edit-reset {
+  padding: .35rem .8rem; border-radius: 8px; border: 1px solid var(--accent-dim);
+  background: var(--open); color: var(--accent); font-weight: 600; cursor: pointer; font-size: .85rem;
+}
+.editbar .edit-apply:hover, .editbar .edit-reset:hover { background: var(--accent-dim); }
+.editbar button:disabled { opacity: .4; cursor: default; }
+.editbar .edit-detected { color: var(--muted); font-size: .75rem; width: 100%; text-align: center; }
 .status { text-align: center; color: var(--muted); min-height: 1.5rem; }
 .status.error { color: #ff7b72; }
 

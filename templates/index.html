@@ -35,6 +35,7 @@ const ANALYZE = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
 
 wirePlayback();
 wireMetronome();
+wireEdit();
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();

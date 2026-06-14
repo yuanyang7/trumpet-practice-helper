@@ -38,6 +38,7 @@ let songs = [];  // rows from Supabase, kept in sync with the dropdown
 
 wirePlayback();
 wireMetronome();
+wireEdit();
 refreshSaved();
 
 async function refreshSaved() {
@@ -62,10 +63,28 @@ async function refreshSaved() {
 loadBtn.addEventListener('click', () => {
   const row = songs[loadSelect.value];
   if (!row) return;
-  renderResult(row.data, {});  // no Save button on the practice page
+  renderResult(row.data, { onUpdate: updateSavedSong });  // no Save button on the practice page
   statusEl.className = 'status';
   statusEl.textContent = '';
 });
+
+async function updateSavedSong(data, btn) {
+  const row = songs[loadSelect.value];
+  if (!row) return;
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  try {
+    const updated = await SB.update(row.id, { data });
+    row.data = updated.data;
+    window._detected = JSON.parse(JSON.stringify(updated.data));
+    btn.textContent = '✓ Updated';
+  } catch (err) {
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
+    btn.disabled = false;
+    btn.textContent = '💾 Update saved song';
+  }
+}
 
 deleteBtn.addEventListener('click', async () => {
   const row = songs[loadSelect.value];
