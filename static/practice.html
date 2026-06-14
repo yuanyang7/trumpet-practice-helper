@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trumpet Practice</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1><span class="emoji">🎺</span> Practice</h1>
+  <p>Your saved songs — pick one and play along.</p>
+</header>
+
+<div class="wrap">
+  <div class="loadrow" id="loadrow" hidden>
+    <span>Song:</span>
+    <select id="loadSelect"></select>
+    <button type="button" id="loadBtn">Load</button>
+    <button type="button" id="deleteBtn" title="Delete this saved song">✕</button>
+  </div>
+  <div class="status" id="status">Loading saved songs…</div>
+  <div id="results"></div>
+</div>
+
+<footer>Labels &amp; fingerings are written pitch; playback sounds concert pitch (matches the recording)</footer>
+
+<script src="/static/config.js"></script>
+<script src="/static/shared.js"></script>
+<script>
+const statusEl = document.getElementById('status');
+const loadrow = document.getElementById('loadrow');
+const loadSelect = document.getElementById('loadSelect');
+const loadBtn = document.getElementById('loadBtn');
+const deleteBtn = document.getElementById('deleteBtn');
+
+let songs = [];  // rows from Supabase, kept in sync with the dropdown
+
+wirePlayback();
+refreshSaved();
+
+async function refreshSaved() {
+  if (!SB.configured()) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Supabase not configured — edit static/config.js with your project URL and anon key.';
+    return;
+  }
+  try {
+    songs = await SB.list();
+    loadSelect.innerHTML = songs.map((s, i) =>
+      `<option value="${i}">${escapeHtml(s.title)}</option>`).join('');
+    loadrow.hidden = songs.length === 0;
+    statusEl.className = 'status';
+    statusEl.textContent = songs.length ? '' : 'No saved songs yet — add one from the processing page on your Mac.';
+  } catch (err) {
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
+  }
+}
+
+loadBtn.addEventListener('click', () => {
+  const row = songs[loadSelect.value];
+  if (!row) return;
+  renderResult(row.data, {});  // no Save button on the practice page
+  statusEl.className = 'status';
+  statusEl.textContent = '';
+});
+
+deleteBtn.addEventListener('click', async () => {
+  const row = songs[loadSelect.value];
+  if (!row) return;
+  if (!confirm(`Delete "${row.title}"?`)) return;
+  try {
+    await SB.remove(row.id);
+    document.getElementById('results').innerHTML = '';
+    await refreshSaved();
+  } catch (err) {
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
+  }
+});
+</script>
+</body>
+</html>

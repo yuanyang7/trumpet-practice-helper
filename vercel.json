@@ -1,0 +1,7 @@
+{
+  "outputDirectory": ".",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/static/practice.html" }
+  ]
+}

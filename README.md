@@ -11,16 +11,33 @@ It shows:
 - For each scale: **primary + alternate fingerings**, and a **▶ Play** button
   that synthesizes the scale (Web Audio API) with a synced note highlight.
 
-**Save / Load:** click **💾 Save** to store the current result in **your browser**
-(`localStorage`). Saved songs appear in the **Saved** dropdown — pick one and
-click **Load** to reopen it instantly without re-downloading, or **✕** to delete
-it. Saves are per-browser and private to each user, so this works the same
-whether you run it locally, on a LAN, or host it on the web.
+## Two pages
 
-If the browser blocks `localStorage` (e.g. a page opened from a `data:` URL),
-**Save** instead downloads a `.json` file. Use **📂 Import file** to load any
-saved `.json` back — which is also how you can share a saved analysis with
-someone else.
+The app is split into two pages so you can practice from your phone:
+
+- **Processing page** — `templates/index.html`, served by Flask on your Mac
+  (`http://127.0.0.1:5001`). Paste a YouTube link → **Analyze** → **💾 Save**.
+  Saving writes the result to **Supabase**. Analysis must run here because it
+  needs `yt-dlp`/`ffmpeg`/`librosa`.
+- **Practice page** — `static/practice.html`, a static page you deploy to
+  **Vercel**. It lists your saved songs straight from Supabase and shows the
+  fingering charts + scale playback. Open this on your phone, anywhere — it
+  works even when your Mac is off.
+
+Shared rendering/playback/Supabase code lives in `static/shared.js`; styling in
+`static/styles.css`.
+
+### One-time setup (Supabase + Vercel)
+
+1. **Supabase table.** In your project, open SQL Editor and run
+   [`supabase_schema.sql`](supabase_schema.sql).
+2. **Credentials.** Copy your Project URL and anon key from Supabase
+   (Settings → API) into [`static/config.js`](static/config.js).
+3. **Deploy the practice page.** `vercel deploy` from the repo root (see
+   [`vercel.json`](vercel.json)). The deployed `/` serves the practice page.
+   Set the Vercel project's Framework Preset to **Other** if asked.
+
+Now: add songs on the Mac, practice them from the Vercel URL on your phone.
 
 ## Requirements
 

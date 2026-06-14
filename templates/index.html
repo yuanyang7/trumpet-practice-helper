@@ -3,117 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trumpet Practice Helper</title>
-<style>
-  :root {
-    --bg: #0f1115;
-    --panel: #1a1d24;
-    --accent: #f0a830;
-    --accent-dim: #6b5430;
-    --text: #e8e8ea;
-    --muted: #9aa0aa;
-    --pressed: #f0a830;
-    --open: #2a2e38;
-    --border: #2c313c;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.5;
-  }
-  header { text-align: center; padding: 2.5rem 1rem 1.5rem; }
-  h1 { margin: 0 0 .3rem; font-size: 1.9rem; }
-  h1 .emoji { filter: saturate(1.2); }
-  header p { color: var(--muted); margin: 0; }
-  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 1rem 4rem; }
-  .form {
-    display: flex; gap: .6rem; max-width: 640px; margin: 0 auto 1.2rem; flex-wrap: wrap;
-  }
-  input[type=url] {
-    flex: 1; min-width: 240px; padding: .8rem 1rem; border-radius: 10px;
-    border: 1px solid var(--border); background: var(--panel); color: var(--text);
-    font-size: 1rem;
-  }
-  input[type=url]:focus { outline: none; border-color: var(--accent); }
-  button {
-    padding: .8rem 1.4rem; border: none; border-radius: 10px; background: var(--accent);
-    color: #1a1206; font-weight: 600; font-size: 1rem; cursor: pointer;
-  }
-  button:disabled { opacity: .5; cursor: progress; }
-  .loadrow {
-    display: flex; align-items: center; gap: .5rem; justify-content: center;
-    color: var(--muted); font-size: .85rem; margin: 0 0 1rem; flex-wrap: wrap;
-  }
-  .loadrow[hidden] { display: none; }
-  .loadrow select {
-    padding: .4rem .6rem; border-radius: 8px; background: var(--panel); color: var(--text);
-    border: 1px solid var(--border); font-size: .85rem; max-width: 320px;
-  }
-  .loadrow button, .save-btn {
-    padding: .4rem .9rem; border-radius: 8px; border: 1px solid var(--accent-dim);
-    background: var(--open); color: var(--accent); font-weight: 600; cursor: pointer; font-size: .85rem;
-  }
-  .loadrow button:hover, .save-btn:hover { background: var(--accent-dim); }
-  .songtitle {
-    text-align: center; font-size: 1.2rem; font-weight: 600; margin: .5rem 0 .2rem;
-    display: flex; align-items: center; gap: .6rem; justify-content: center; flex-wrap: wrap;
-  }
-  .save-btn.saved { background: #1f3a2a; color: #6fd99a; border-color: #2f5a40; }
-  .status { text-align: center; color: var(--muted); min-height: 1.5rem; }
-  .status.error { color: #ff7b72; }
-
-  .keys {
-    display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
-    margin: 1.5rem 0 2rem;
-  }
-  .keycard {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-    padding: 1rem 1.6rem; text-align: center; min-width: 180px;
-  }
-  .keycard .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-  .keycard .value { font-size: 1.7rem; font-weight: 700; color: var(--accent); margin-top: .2rem; }
-  .keycard small { color: var(--muted); }
-
-  .scale { margin-bottom: 2.2rem; }
-  .scale h2 {
-    font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem;
-    display: flex; align-items: center; gap: .7rem;
-  }
-  .play-btn {
-    padding: .25rem .7rem; font-size: .8rem; border-radius: 999px; background: var(--open);
-    color: var(--accent); border: 1px solid var(--accent-dim); cursor: pointer; font-weight: 600;
-  }
-  .play-btn:hover { background: var(--accent-dim); }
-  .play-btn.playing { background: var(--accent); color: #1a1206; border-color: var(--accent); }
-  .note.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
-  .notes { display: flex; gap: .7rem; flex-wrap: wrap; }
-  .note {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: .7rem .6rem .5rem; text-align: center; width: 78px;
-  }
-  .note .nname { font-weight: 700; font-size: 1.1rem; }
-  .note .noct { color: var(--muted); font-size: .75rem; font-weight: 400; }
-  .note .concert { color: var(--muted); font-size: .65rem; margin-top: .1rem; }
-  .note .concert b { color: #8fb8ff; font-weight: 600; }
-  .valves { display: flex; gap: 5px; justify-content: center; margin-top: .5rem; }
-  .valve {
-    width: 18px; height: 26px; border-radius: 9px; border: 2px solid var(--accent-dim);
-    background: var(--open); display: flex; align-items: flex-end; justify-content: center;
-    font-size: .6rem; color: var(--muted); padding-bottom: 1px;
-  }
-  .valve.on { background: var(--pressed); border-color: var(--pressed); color: #1a1206; font-weight: 700; }
-  .note .open-label { color: var(--muted); font-size: .7rem; margin-top: .55rem; }
-  .alt { margin-top: .5rem; border-top: 1px dashed var(--border); padding-top: .4rem; }
-  .alt-label { color: var(--muted); font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; }
-  .alt .valves { margin-top: .25rem; }
-  .alt .valve { width: 13px; height: 19px; border-radius: 7px; font-size: .5rem; }
-  footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 2rem 1rem; }
-</style>
+<title>Trumpet Practice Helper — Add a Song</title>
+<link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <header>
-  <h1><span class="emoji">🎺</span> Trumpet Practice Helper</h1>
-  <p>Paste a YouTube link — get the key and trumpet fingerings for its scales.</p>
+  <h1><span class="emoji">🎺</span> Add a Song</h1>
+  <p>Paste a YouTube link — detect the key, then save it for practice.</p>
 </header>
 
 <div class="wrap">
@@ -121,357 +17,71 @@
     <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
     <button type="submit" id="go">Analyze</button>
   </form>
-  <div class="loadrow" id="loadrow" hidden>
-    <span>Saved:</span>
-    <select id="loadSelect"></select>
-    <button type="button" id="loadBtn">Load</button>
-    <button type="button" id="deleteBtn" title="Delete this saved song">✕</button>
-  </div>
-  <div class="loadrow">
-    <button type="button" id="importBtn">📂 Import file</button>
-    <input type="file" id="importFile" accept="application/json,.json" hidden>
-  </div>
   <div class="status" id="status"></div>
   <div id="results"></div>
 </div>
 
-<footer>Key detection via Krumhansl-Schmuckler · labels &amp; fingerings are written pitch; playback sounds concert pitch (matches the recording)</footer>
+<footer>Key detection via Krumhansl-Schmuckler · saved songs sync to Supabase for the practice page</footer>
 
+<script src="/static/config.js"></script>
+<script src="/static/shared.js"></script>
 <script>
 const form = document.getElementById('form');
-const status = document.getElementById('status');
-const results = document.getElementById('results');
+const statusEl = document.getElementById('status');
 const goBtn = document.getElementById('go');
-const loadrow = document.getElementById('loadrow');
-const loadSelect = document.getElementById('loadSelect');
-const loadBtn = document.getElementById('loadBtn');
-const deleteBtn = document.getElementById('deleteBtn');
-const importBtn = document.getElementById('importBtn');
-const importFile = document.getElementById('importFile');
 
-// Resolve API paths against the Flask server. When the page is served over http
-// a relative path works; in a preview pane (file:/about:) we need an absolute URL.
-const ORIGIN = (location.protocol === 'http:' || location.protocol === 'https:')
-  ? '' : 'http://127.0.0.1:5001';
-const api = (path) => ORIGIN + path;
+// Analyze runs on the Mac (yt-dlp/ffmpeg/librosa). "" = same origin.
+const ANALYZE = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
+
+wirePlayback();
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const url = document.getElementById('url').value.trim();
   if (!url) return;
-  results.innerHTML = '';
-  status.className = 'status';
-  status.textContent = 'Downloading audio and detecting key… (this can take 20–60s)';
+  document.getElementById('results').innerHTML = '';
+  statusEl.className = 'status';
+  statusEl.textContent = 'Downloading audio and detecting key… (this can take 20–60s)';
   goBtn.disabled = true;
 
   try {
-    const res = await fetch(api('/analyze'), {
+    const res = await fetch(ANALYZE + '/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
-    render(data);
-    status.textContent = '';
+    renderResult(data, { onSave: saveToSupabase });
+    statusEl.textContent = '';
   } catch (err) {
-    status.className = 'status error';
-    status.textContent = err.message;
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
   } finally {
     goBtn.disabled = false;
   }
 });
 
-function valveDiagram(valves) {
-  if (valves === null) {
-    return '<div class="open-label">—</div>';
-  }
-  if (valves.length === 0) {
-    let cells = '';
-    for (let v = 1; v <= 3; v++) cells += `<div class="valve">${v}</div>`;
-    return `<div class="valves">${cells}</div><div class="open-label">open</div>`;
-  }
-  let cells = '';
-  for (let v = 1; v <= 3; v++) {
-    const on = valves.includes(v) ? ' on' : '';
-    cells += `<div class="valve${on}">${v}</div>`;
-  }
-  return `<div class="valves">${cells}</div>`;
-}
-
-function altDiagram(alternates) {
-  if (!alternates || alternates.length === 0) return '';
-  const diagrams = alternates.map(valves => {
-    let cells = '';
-    for (let v = 1; v <= 3; v++) {
-      const on = valves.includes(v) ? ' on' : '';
-      cells += `<div class="valve${on}">${v}</div>`;
-    }
-    return `<div class="valves">${cells}</div>`;
-  }).join('');
-  return `<div class="alt"><div class="alt-label">alt</div>${diagrams}</div>`;
-}
-
-function render(data) {
-  window._lastResult = data;
-  const titleHtml = data.title
-    ? `<div class="songtitle">${data.title}
-         <button class="save-btn" id="saveBtn">💾 Save</button>
-       </div>`
-    : '';
-
-  const keys = titleHtml + `
-    <div class="keys">
-      <div class="keycard">
-        <div class="label">Concert Key</div>
-        <div class="value">${data.concert_key}</div>
-        <small>what the recording is in</small>
-      </div>
-      <div class="keycard">
-        <div class="label">Trumpet Key (Bb)</div>
-        <div class="value">${data.trumpet_key}</div>
-        <small>what you read & play</small>
-      </div>
-      <div class="keycard">
-        <div class="label">Tempo</div>
-        <div class="value">${data.bpm} <small style="font-size:1rem">BPM</small></div>
-        <small>estimated</small>
-      </div>
-      <div class="keycard">
-        <div class="label">Confidence</div>
-        <div class="value">${Math.round(data.confidence * 100)}%</div>
-        <small>detection certainty</small>
-      </div>
-    </div>`;
-
-  window._scales = data.scales;
-  const scales = data.scales.map((s, si) => {
-    const notes = s.notes.map((n, ni) => `
-      <div class="note" data-scale="${si}" data-note="${ni}">
-        <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
-        <div class="concert">sounds <b>${n.concert}</b></div>
-        ${valveDiagram(n.valves)}
-        ${altDiagram(n.alternates)}
-      </div>`).join('');
-    return `<div class="scale">
-      <h2>${s.name}
-        <button class="play-btn" data-scale="${si}">▶ Play</button>
-      </h2>
-      <div class="notes">${notes}</div>
-    </div>`;
-  }).join('');
-
-  results.innerHTML = keys + scales;
-
-  const saveBtn = document.getElementById('saveBtn');
-  if (saveBtn) saveBtn.addEventListener('click', () => saveCurrent(saveBtn));
-}
-
-/* ---- Save / Load saved analyses ----
-   Primary store is this browser's localStorage. Some contexts disable it (e.g.
-   a page served from a data: URL, like the preview pane), so we detect that and
-   fall back to downloading/importing a JSON file, which also works for sharing. */
-const STORE_PREFIX = 'trumpet:';
-
-function storageOK() {
-  try {
-    const k = '__trumpet_test__';
-    localStorage.setItem(k, '1');
-    localStorage.removeItem(k);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-function safeName(title) {
-  return (title || 'untitled').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
-}
-
-function savedTitles() {
-  if (!storageOK()) return [];
-  const titles = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(STORE_PREFIX)) titles.push(k.slice(STORE_PREFIX.length));
-  }
-  return titles.sort();
-}
-
-function downloadJSON(title, data) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = safeName(title) + '.json';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(a.href);
-}
-
-function saveCurrent(btn) {
-  if (!window._lastResult) return;
-  const title = window._lastResult.title || 'untitled';
-  if (storageOK()) {
-    localStorage.setItem(STORE_PREFIX + title, JSON.stringify(window._lastResult));
-    btn.classList.add('saved');
-    btn.textContent = '✓ Saved';
-    refreshSaved();
-  } else {
-    // Storage blocked here — hand the user a file they can re-import or share.
-    downloadJSON(title, window._lastResult);
-    btn.classList.add('saved');
-    btn.textContent = '⬇ Downloaded';
-  }
-}
-
-function refreshSaved() {
-  const songs = savedTitles();
-  loadSelect.innerHTML = songs.map(s =>
-    `<option>${s.replace(/</g, '&lt;')}</option>`).join('');
-  loadrow.hidden = songs.length === 0;
-}
-
-loadBtn.addEventListener('click', () => {
-  const title = loadSelect.value;
-  if (!title) return;
-  const raw = localStorage.getItem(STORE_PREFIX + title);
-  if (!raw) {
-    status.className = 'status error';
-    status.textContent = `No saved analysis named "${title}".`;
+async function saveToSupabase(data, btn) {
+  if (!SB.configured()) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Supabase not configured — edit static/config.js with your project URL and anon key.';
     return;
   }
-  render(JSON.parse(raw));
-  status.className = 'status';
-  status.textContent = '';
-});
-
-deleteBtn.addEventListener('click', () => {
-  const title = loadSelect.value;
-  if (!title) return;
-  localStorage.removeItem(STORE_PREFIX + title);
-  refreshSaved();
-});
-
-importBtn.addEventListener('click', () => importFile.click());
-importFile.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      render(data);
-      status.className = 'status';
-      status.textContent = '';
-      // Persist it for next time if this browser allows it.
-      if (storageOK() && data.title) {
-        localStorage.setItem(STORE_PREFIX + data.title, JSON.stringify(data));
-        refreshSaved();
-      }
-    } catch (err) {
-      status.className = 'status error';
-      status.textContent = 'Could not read that file: ' + err.message;
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = '';  // allow re-importing the same file
-});
-
-refreshSaved();
-
-/* ---- Web Audio scale playback ---- */
-let audioCtx = null;
-let playToken = 0;  // increments to cancel an in-progress playback
-
-const SEMITONES = {
-  'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3, 'E': 4, 'F': 5,
-  'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8, 'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
-};
-
-// Note labels and fingerings are WRITTEN (Bb-trumpet) pitch. A trumpet actually
-// sounds a whole step lower than written, so to make playback match the recording
-// (and what your horn produces with these fingerings) we drop 2 semitones to concert pitch.
-const WRITTEN_TO_CONCERT = -2;
-
-function noteToFreq(name, octave) {
-  const midi = (octave + 1) * 12 + SEMITONES[name] + WRITTEN_TO_CONCERT;
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
-function playTone(freq, start, dur) {
-  // Simple brassy tone: sawtooth through a gentle envelope.
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'sawtooth';
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0, start);
-  gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
-  gain.gain.setValueAtTime(0.25, start + dur - 0.06);
-  gain.gain.linearRampToValueAtTime(0, start + dur);
-  osc.connect(gain).connect(audioCtx.destination);
-  osc.start(start);
-  osc.stop(start + dur);
-}
-
-async function playScale(scaleIndex, btn) {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  await audioCtx.resume();
-
-  const myToken = ++playToken;  // cancels any other running playback
-  document.querySelectorAll('.play-btn').forEach(b => {
-    b.classList.remove('playing'); b.textContent = '▶ Play';
-  });
-  btn.classList.add('playing');
-  btn.textContent = '■ Stop';
-
-  const notes = window._scales[scaleIndex].notes;
-  const noteDur = 0.4;       // seconds of sound per note
-  const step = 0.42;         // gap between note onsets
-  const t0 = audioCtx.currentTime + 0.05;
-
-  notes.forEach((n, i) => {
-    playTone(noteToFreq(n.name, n.octave), t0 + i * step, noteDur);
-  });
-
-  // Visual highlight in sync with the audio.
-  const cards = document.querySelectorAll(`.note[data-scale="${scaleIndex}"]`);
-  for (let i = 0; i < notes.length; i++) {
-    setTimeout(() => {
-      if (myToken !== playToken) return;
-      cards.forEach(c => c.classList.remove('active'));
-      const c = document.querySelector(`.note[data-scale="${scaleIndex}"][data-note="${i}"]`);
-      if (c) c.classList.add('active');
-    }, i * step * 1000);
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await SB.save({ title: data.title, video_id: data.video_id, data });
+    btn.classList.add('saved');
+    btn.textContent = '✓ Saved';
+  } catch (err) {
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
+    btn.textContent = '💾 Save';
+  } finally {
+    btn.disabled = false;
   }
-  setTimeout(() => {
-    if (myToken !== playToken) return;
-    cards.forEach(c => c.classList.remove('active'));
-    btn.classList.remove('playing');
-    btn.textContent = '▶ Play';
-  }, notes.length * step * 1000 + 200);
 }
-
-function stopPlayback() {
-  playToken++;  // invalidate scheduled highlight callbacks
-  document.querySelectorAll('.play-btn').forEach(b => {
-    b.classList.remove('playing'); b.textContent = '▶ Play';
-  });
-  document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
-  // Suspend+resume cuts any still-sounding oscillators.
-  if (audioCtx) { audioCtx.close(); audioCtx = null; }
-}
-
-results.addEventListener('click', (e) => {
-  const btn = e.target.closest('.play-btn');
-  if (!btn) return;
-  const idx = parseInt(btn.dataset.scale, 10);
-  if (btn.classList.contains('playing')) {
-    stopPlayback();
-  } else {
-    playScale(idx, btn);
-  }
-});
 </script>
 </body>
 </html>
