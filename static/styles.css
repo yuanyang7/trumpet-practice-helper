@@ -67,6 +67,18 @@ button:disabled { opacity: .5; cursor: progress; }
 .keycard .value { font-size: 1.7rem; font-weight: 700; color: var(--accent); margin-top: .2rem; }
 .keycard small { color: var(--muted); }
 
+.metro { margin-top: .6rem; display: flex; gap: .4rem; justify-content: center; align-items: center; }
+.metro select {
+  padding: .25rem .4rem; border-radius: 8px; background: var(--open); color: var(--text);
+  border: 1px solid var(--border); font-size: .8rem;
+}
+.metro-btn {
+  padding: .25rem .7rem; font-size: .8rem; border-radius: 999px; background: var(--open);
+  color: var(--accent); border: 1px solid var(--accent-dim); cursor: pointer; font-weight: 600;
+}
+.metro-btn:hover { background: var(--accent-dim); }
+.metro-btn.playing { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+
 .scale { margin-bottom: 2.2rem; }
 .scale h2 {
   font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem;

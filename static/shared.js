@@ -74,10 +74,22 @@ function altDiagram(alternates) {
   return `<div class="alt"><div class="alt-label">alt</div>${diagrams}</div>`;
 }
 
+const COMMON_TEMPOS = [40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+
+// Builds <option> tags for the metronome dropdown: the common tempos plus the
+// song's own (rounded) BPM, selected by default so playback matches the song.
+function tempoOptions(bpm) {
+  const songBpm = Math.round(bpm);
+  const tempos = Array.from(new Set([...COMMON_TEMPOS, songBpm])).sort((a, b) => a - b);
+  return tempos.map(t =>
+    `<option value="${t}"${t === songBpm ? ' selected' : ''}>${t} BPM</option>`).join('');
+}
+
 /* Render an analysis result into #results. `opts.onSave`, if given, adds a Save
    button next to the title and calls onSave(data, button) when clicked. */
 function renderResult(data, opts) {
   opts = opts || {};
+  stopMetronome();
   const results = document.getElementById('results');
   window._lastResult = data;
   window._scales = data.scales;
@@ -103,6 +115,10 @@ function renderResult(data, opts) {
         <div class="label">Tempo</div>
         <div class="value">${data.bpm} <small style="font-size:1rem">BPM</small></div>
         <small>estimated</small>
+        <div class="metro">
+          <select id="metroSelect">${tempoOptions(data.bpm)}</select>
+          <button class="metro-btn" id="metroBtn">▶ Click</button>
+        </div>
       </div>
       <div class="keycard">
         <div class="label">Confidence</div>
@@ -225,5 +241,59 @@ function wirePlayback() {
     const idx = parseInt(btn.dataset.scale, 10);
     if (btn.classList.contains('playing')) stopPlayback();
     else playScale(idx, btn);
+  });
+}
+
+/* ---------------- Metronome ---------------- */
+let metroAudioCtx = null;
+let metroTimer = null;
+let metroNextClick = 0;
+
+function scheduleMetroClick(bpm) {
+  const osc = metroAudioCtx.createOscillator();
+  const gain = metroAudioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 1000;
+  gain.gain.setValueAtTime(0.3, metroNextClick);
+  gain.gain.exponentialRampToValueAtTime(0.0001, metroNextClick + 0.05);
+  osc.connect(gain).connect(metroAudioCtx.destination);
+  osc.start(metroNextClick);
+  osc.stop(metroNextClick + 0.05);
+  metroNextClick += 60 / bpm;
+}
+
+async function startMetronome(bpm) {
+  stopMetronome();
+  if (!metroAudioCtx) metroAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await metroAudioCtx.resume();
+
+  metroNextClick = metroAudioCtx.currentTime + 0.05;
+  scheduleMetroClick(bpm);
+  metroTimer = setInterval(() => {
+    while (metroNextClick < metroAudioCtx.currentTime + 0.1) scheduleMetroClick(bpm);
+  }, 25);
+
+  const btn = document.getElementById('metroBtn');
+  if (btn) { btn.classList.add('playing'); btn.textContent = '■ Stop'; }
+}
+
+function stopMetronome() {
+  if (metroTimer) { clearInterval(metroTimer); metroTimer = null; }
+  const btn = document.getElementById('metroBtn');
+  if (btn) { btn.classList.remove('playing'); btn.textContent = '▶ Click'; }
+}
+
+// Delegated metronome handling — attach once per page.
+function wireMetronome() {
+  const results = document.getElementById('results');
+  results.addEventListener('click', (e) => {
+    const btn = e.target.closest('#metroBtn');
+    if (!btn) return;
+    if (metroTimer) stopMetronome();
+    else startMetronome(parseInt(document.getElementById('metroSelect').value, 10));
+  });
+  results.addEventListener('change', (e) => {
+    if (e.target.id !== 'metroSelect') return;
+    if (metroTimer) startMetronome(parseInt(e.target.value, 10));
   });
 }

@@ -34,6 +34,7 @@ const goBtn = document.getElementById('go');
 const ANALYZE = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
 
 wirePlayback();
+wireMetronome();
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
