@@ -282,7 +282,9 @@ function renderResult(data, opts) {
     ? `<div class="songtitle">${escapeHtml(data.title)}${saveBtn}${editBtn}</div>` : '';
 
   const detected = window._detected;
-  const edited = data.concert_key !== detected.concert_key || Math.round(data.bpm) !== Math.round(detected.bpm);
+  const edited = data.concert_key !== detected.concert_key
+    || Math.round(data.bpm) !== Math.round(detected.bpm)
+    || JSON.stringify(data.tab || null) !== JSON.stringify(detected.tab || null);
   const { pc: concertPc, mode } = parseKey(data.concert_key);
   const updateBtn = opts.onUpdate
     ? `<button class="edit-apply" id="editUpdateBtn"${edited ? '' : ' disabled'}>💾 Update saved song</button>` : '';
@@ -365,7 +367,7 @@ function renderResult(data, opts) {
     ${rows}
   </div>`;
 
-  results.innerHTML = keys + transportPanel(data) + scales;
+  results.innerHTML = keys + transportPanel(data) + scales + tabSection(data);
 
   if (data.video_id) loadYouTube(data.video_id);
   else if (window._ytPlayer && window._ytPlayer.pauseVideo) window._ytPlayer.pauseVideo();
@@ -479,8 +481,140 @@ function stopPlayback() {
   playToken++;
   const sp = document.getElementById('scalePlay');
   if (sp) { sp.classList.remove('playing'); sp.textContent = '▶ Play'; }
+  const tp = document.getElementById('tabPlay');
+  if (tp) { tp.classList.remove('playing'); tp.textContent = '▶ Play tab'; }
   document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+/* ---------------- Trumpet line (tab) ----------------
+   A best-effort monophonic transcription of a chosen bar range, rendered as a
+   sequence of trumpet notes (written pitch + valves) grouped by bar. The notes
+   are produced by the Flask backend (/transcribe, librosa pyin) and stored on
+   data.tab so they save with the song and re-render anywhere. */
+function tabSection(data) {
+  if (!data.video_id) return '';
+  const tab = data.tab;
+  const hasNotes = tab && tab.notes && tab.notes.length;
+  const playBtn = hasNotes
+    ? `<button class="play-btn" id="tabPlay">▶ Play tab</button>` : '';
+  return `<div class="scale tabsec" id="tabSec">
+    <h2>Trumpet line (tab)
+      <button class="play-btn" id="tabTranscribe">🎺 Transcribe loop bars</button>
+      ${playBtn}
+    </h2>
+    <p class="tab-note">Best-effort, one note at a time — set the <b>Loop bars</b>
+      above to an exposed/solo trumpet passage for the cleanest result.</p>
+    <div id="tabNotes">${renderTabNotes(tab)}</div>
+  </div>`;
+}
+
+function renderTabNotes(tab) {
+  const notes = (tab && tab.notes) || [];
+  if (!notes.length) {
+    return `<p class="tab-empty">No trumpet line yet — pick the loop bars and hit Transcribe.</p>`;
+  }
+  const byBar = new Map();
+  notes.forEach((n, i) => {
+    if (!byBar.has(n.bar)) byBar.set(n.bar, []);
+    byBar.get(n.bar).push({ n, i });
+  });
+  return [...byBar.keys()].sort((a, b) => a - b).map(bar => {
+    const cells = byBar.get(bar).sort((a, b) => a.n.beat - b.n.beat).map(({ n, i }) => {
+      const pc = ((SEMITONES[n.name] % 12) + 12) % 12;
+      return `<div class="note tabnote" data-idx="${i}" data-pc="${pc}" data-oct="${n.octave}">
+        <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
+        <div class="concert">sounds <b>${n.concert}</b></div>
+        ${valveDiagram(n.valves)}
+        ${altDiagram(n.alternates)}
+        <div class="rhythm">beat ${(n.beat + 1).toFixed(2)} · ${n.dur_beats}♩</div>
+      </div>`;
+    }).join('');
+    return `<div class="octave-row tabbar">
+      <div class="octave-label">bar ${bar}</div>
+      <div class="notes">${cells}</div>
+    </div>`;
+  }).join('');
+}
+
+// Play the transcribed tab in the song's tempo, honoring each note's bar/beat
+// position and duration; highlight each note card as it sounds.
+async function playTab(btn) {
+  const data = window._lastResult;
+  if (!data || !data.tab || !(data.tab.notes || []).length) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();
+
+  const myToken = ++playToken;
+  btn.classList.add('playing');
+  btn.textContent = '■ Stop';
+
+  const m = songMeta();
+  const beatSec = 60 / m.bpm;
+  const notes = data.tab.notes;
+  const fromBar = data.tab.from_bar || notes[0].bar;
+  const t0 = audioCtx.currentTime + 0.05;
+
+  const sched = notes.map((n, i) => {
+    const startBeats = (n.bar - fromBar) * m.beatsPerBar + n.beat;
+    return { i, n, start: startBeats * beatSec, dur: Math.max(0.12, n.dur_beats * beatSec) };
+  });
+  sched.forEach(s => playTone(noteToFreq(s.n.name, s.n.octave), t0 + s.start, Math.min(s.dur, 1.5)));
+  sched.forEach(s => setTimeout(() => {
+    if (myToken !== playToken) return;
+    document.querySelectorAll('.tabnote.active').forEach(c => c.classList.remove('active'));
+    const c = document.querySelector(`.tabnote[data-idx="${s.i}"]`);
+    if (c) c.classList.add('active');
+  }, s.start * 1000));
+
+  const total = Math.max(...sched.map(s => s.start + s.dur));
+  setTimeout(() => {
+    if (myToken !== playToken) return;
+    document.querySelectorAll('.tabnote.active').forEach(c => c.classList.remove('active'));
+    btn.classList.remove('playing');
+    btn.textContent = '▶ Play tab';
+  }, total * 1000 + 300);
+}
+
+// POST the current loop-bar range to the Flask backend for transcription, then
+// store the result on the song and re-render. Needs ANALYZE_API to reach the Mac
+// (same origin on the processing page; the practice page can point at the Mac).
+async function transcribeLoop(btn) {
+  const data = window._lastResult;
+  if (!data || !data.video_id) return;
+  const valInt = (id, dflt) => Math.max(1, parseInt((document.getElementById(id) || {}).value, 10) || dflt);
+  const fromBar = valInt('barFrom', 1);
+  const toBar = Math.max(fromBar, valInt('barTo', fromBar));
+  const api = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
+  const m = songMeta();
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Transcribing…';
+  const notesEl = document.getElementById('tabNotes');
+  if (notesEl) notesEl.innerHTML = `<p class="tab-empty">Listening to bars ${fromBar}–${toBar}… (20–40s)</p>`;
+
+  try {
+    const res = await fetch(api + '/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_id: data.video_id, url: data.url,
+        from_bar: fromBar, to_bar: toBar,
+        bpm: m.bpm, beat_offset: Number(data.beat_offset) || 0,
+        beats_per_measure: m.beatsPerBar, concert_key: data.concert_key,
+      }),
+    });
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || 'Transcription failed');
+    data.tab = out.tab;
+    const editOpen = !(document.getElementById('editBar') || {}).hidden;
+    renderResult(data, Object.assign({}, window._lastOpts, { _fromEdit: true, _editOpen: editOpen }));
+  } catch (err) {
+    if (notesEl) notesEl.innerHTML = `<p class="tab-empty error">${escapeHtml(err.message)}</p>`;
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 }
 
 // Delegated scale play/note-click + scale-picker handling — attach once per page.
@@ -494,6 +628,14 @@ function wirePlayback() {
       else playSelectedScale(btn);
       return;
     }
+    const tabPlayBtn = e.target.closest('#tabPlay');
+    if (tabPlayBtn) {
+      if (tabPlayBtn.classList.contains('playing')) stopPlayback();
+      else playTab(tabPlayBtn);
+      return;
+    }
+    const transcribeBtn = e.target.closest('#tabTranscribe');
+    if (transcribeBtn) { transcribeLoop(transcribeBtn); return; }
     const note = e.target.closest('.note');
     if (note) playNote(note);
   });

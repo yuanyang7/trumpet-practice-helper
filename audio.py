@@ -24,12 +24,14 @@ def get_metadata(url):
     return {"id": vid, "title": title}
 
 
-def download_audio(url, max_seconds=180):
+def download_audio(url, max_seconds=180, start_seconds=0):
     """Download (a slice of) the audio track from a YouTube URL.
 
     Returns the path to a wav file in a temp dir. Caller is responsible for
-    cleaning up the returned directory (its parent). We cap the duration to keep
-    key detection fast; the harmonic content of a few minutes is plenty.
+    cleaning up the returned directory (its parent). By default we cap the
+    duration to keep key detection fast; pass `start_seconds` (with
+    `max_seconds` as the slice length) to fetch an arbitrary window, e.g. the
+    bar range being transcribed.
     """
     if not shutil.which("yt-dlp"):
         raise RuntimeError("yt-dlp is not installed (brew install yt-dlp)")
@@ -47,9 +49,10 @@ def download_audio(url, max_seconds=180):
         "-o", out_template,
         "--no-playlist",
     ]
-    # Limit how much we download/process for speed.
+    # Limit which slice we download/process for speed: [start, start+length].
     if max_seconds:
-        cmd += ["--download-sections", f"*0-{max_seconds}"]
+        start = max(0, int(start_seconds))
+        cmd += ["--download-sections", f"*{start}-{start + int(max_seconds)}"]
     cmd.append(url)
 
     proc = subprocess.run(cmd, capture_output=True, text=True)

@@ -2,6 +2,7 @@ flask
 librosa
 soundfile
 numpy<2
+scipy
 yt-dlp
 
 # Optional: CNN-based key detection (method="cnn"). Needs numpy<2 and a C

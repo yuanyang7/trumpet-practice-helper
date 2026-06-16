@@ -193,5 +193,13 @@ button:disabled { opacity: .5; cursor: progress; }
 .alt-label { color: var(--muted); font-size: .6rem; text-transform: uppercase; letter-spacing: .04em; }
 .alt .valves { margin-top: .25rem; }
 .alt .valve { width: 13px; height: 19px; border-radius: 7px; font-size: .5rem; }
+/* Trumpet line (tab) */
+.tabsec h2 #tabTranscribe { margin-left: auto; }
+.tab-note { color: var(--muted); font-size: .78rem; margin: .5rem 0 1rem; }
+.tab-empty { color: var(--muted); font-size: .85rem; padding: .6rem 0; }
+.tab-empty.error { color: #ff8f8f; }
+.octave-row.tabbar .octave-label { padding-top: .9rem; color: var(--accent); }
+.tabnote .rhythm { color: var(--muted); font-size: .58rem; margin-top: .5rem; letter-spacing: .02em; }
+
 .navlink { display: block; text-align: center; color: var(--accent); font-size: .85rem; margin-top: .5rem; }
 footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 2rem 1rem; }
