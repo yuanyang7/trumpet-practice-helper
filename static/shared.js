@@ -368,6 +368,7 @@ function renderResult(data, opts) {
   </div>`;
 
   results.innerHTML = keys + transportPanel(data) + scales + tabSection(data);
+  drawTabStaff(data);
 
   if (data.video_id) loadYouTube(data.video_id);
   else if (window._ytPlayer && window._ytPlayer.pauseVideo) window._ytPlayer.pauseVideo();
@@ -483,7 +484,7 @@ function stopPlayback() {
   if (sp) { sp.classList.remove('playing'); sp.textContent = '▶ Play'; }
   const tp = document.getElementById('tabPlay');
   if (tp) { tp.classList.remove('playing'); tp.textContent = '▶ Play tab'; }
-  document.querySelectorAll('.note.active, .tabnote.active').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.note.active, .vf-note.active').forEach(c => c.classList.remove('active'));
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
 }
 
@@ -504,18 +505,14 @@ function tabSection(data) {
       <button class="play-btn" id="tabWhole">🎺 Whole song</button>
       ${playBtn}
     </h2>
-    <p class="tab-note">Best-effort, one note at a time. <b>Loop bars</b> transcribes
+    <p class="tab-note">Best-effort, one note at a time, shown in written (Bb)
+      pitch with the valve fingering under each note. <b>Loop bars</b> transcribes
       the looped range above (cleanest on an exposed passage); <b>Whole song</b>
       sweeps the whole track (slower, messier where the trumpet isn't the lead).
       Click a note to hear it.</p>
-    <div id="tabNotes">${renderTabNotes(tab)}</div>
+    <div id="tabNotes"><div id="tabStaff" class="tabstaff"></div></div>
   </div>`;
 }
-
-// Compact proportional notation: each measure is a fixed-width lane with beat
-// gridlines; every note is a chip positioned by its beat and sized by its
-// duration, so the rhythm (节奏) is visible at a glance. Click a chip to hear it.
-const TAB_BEAT_PX = 48;
 
 function valveText(valves) {
   if (valves === null) return '—';        // out of practical range
@@ -523,41 +520,118 @@ function valveText(valves) {
   return valves.join('·');
 }
 
-// A coarse note-value glyph for common durations; width already conveys length,
-// so an unrecognized duration just falls back to no glyph.
-function rhythmGlyph(durBeats) {
-  return ({ 4: '𝅝', 3: '♩.', 2: '𝅗𝅥', 1.5: '♩.', 1: '♩', 0.75: '♪.', 0.5: '♪', 0.25: '♬' })[durBeats] || '';
+// Map a duration in beats (assuming a quarter-note beat) to a VexFlow duration
+// code + dot count, picking the closest representable value.
+const VEX_DURATIONS = [
+  [4, 'w', 0], [3, 'h', 1], [2, 'h', 0], [1.5, 'q', 1],
+  [1, 'q', 0], [0.75, '8', 1], [0.5, '8', 0], [0.25, '16', 0],
+];
+function vexDuration(durBeats) {
+  let best = VEX_DURATIONS[VEX_DURATIONS.length - 1];
+  let bestDiff = Infinity;
+  for (const row of VEX_DURATIONS) {
+    const diff = Math.abs(row[0] - durBeats);
+    if (diff < bestDiff) { bestDiff = diff; best = row; }
+  }
+  return { duration: best[1], dots: best[2] };
 }
 
-function renderTabNotes(tab) {
-  const notes = (tab && tab.notes) || [];
+// "F#" -> "#", "Bb" -> "b", "C" -> null. VexFlow needs the accidental added as a
+// modifier (the key string alone sets pitch position, not the drawn glyph).
+function accidentalOf(name) {
+  if (name.length < 2) return null;
+  return name[1] === '#' ? '#' : 'b';
+}
+
+// Render the transcribed line as standard notation (treble clef) with the valve
+// fingering annotated under each note. Drawn imperatively into #tabStaff via
+// VexFlow after renderResult has set the DOM. Notes are grouped into measures;
+// a non-strict voice tolerates measures that don't sum exactly to the bar
+// (our transcription is approximate).
+function drawTabStaff(data) {
+  const host = document.getElementById('tabStaff');
+  if (!host) return;
+  host.innerHTML = '';
+  const notes = (data && data.tab && data.tab.notes) || [];
   if (!notes.length) {
-    return `<p class="tab-empty">No trumpet line yet — pick the loop bars (or Whole song) and hit Transcribe.</p>`;
+    host.innerHTML = '<p class="tab-empty">No trumpet line yet — pick the loop bars (or Whole song) and hit Transcribe.</p>';
+    return;
   }
-  const beatsPerBar = (window._lastResult && Number(window._lastResult.beats_per_measure)) || 4;
-  const laneW = beatsPerBar * TAB_BEAT_PX;
+  if (!(window.Vex && Vex.Flow)) {
+    host.innerHTML = '<p class="tab-empty error">Notation library failed to load (offline?).</p>';
+    return;
+  }
+  const VF = Vex.Flow;
+  const beatsPerBar = Number(data.beats_per_measure) || 4;
+
+  // Group notes by bar, keeping each note's original index for play/highlight.
   const byBar = new Map();
   notes.forEach((n, i) => {
     if (!byBar.has(n.bar)) byBar.set(n.bar, []);
     byBar.get(n.bar).push({ n, i });
   });
-  const measures = [...byBar.keys()].sort((a, b) => a - b).map(bar => {
-    const chips = byBar.get(bar).map(({ n, i }) => {
-      const beat = Math.max(0, Math.min(n.beat, beatsPerBar - 0.25));
-      const left = beat * TAB_BEAT_PX;
-      const w = Math.max(0.25, Math.min(n.dur_beats, beatsPerBar - beat)) * TAB_BEAT_PX - 4;
-      const pc = ((SEMITONES[n.name] % 12) + 12) % 12;
-      return `<div class="tabnote" data-idx="${i}" data-pc="${pc}" data-oct="${n.octave}"
-        title="sounds ${n.concert}${n.octave}" style="left:${left}px;width:${w}px">
-        <span class="tn-name">${n.name}<sub>${n.octave}</sub></span>
-        <span class="tn-valve">${valveText(n.valves)}</span>
-        <span class="tn-rhythm">${rhythmGlyph(n.dur_beats)}</span>
-      </div>`;
-    }).join('');
-    return `<div class="tabmeasure" style="width:${laneW}px;background-size:${TAB_BEAT_PX}px 100%">
-      <span class="tabmeasure-num">${bar}</span>${chips}</div>`;
-  }).join('');
-  return `<div class="tabstrip">${measures}</div>`;
+  const bars = [...byBar.keys()].sort((a, b) => a - b);
+
+  // Layout: wrap measures across as many lines as needed for the container.
+  const width = Math.max(320, host.clientWidth || 800);
+  const leftPad = 10, topPad = 12, lineH = 120;
+  const firstW = 240, measW = 200;     // first measure of a line is wider (clef + time sig)
+  const perLine = Math.max(1, 1 + Math.floor((width - leftPad - firstW) / measW));
+  const numLines = Math.ceil(bars.length / perLine);
+
+  const renderer = new VF.Renderer(host, VF.Renderer.Backends.SVG);
+  renderer.resize(width, topPad * 2 + numLines * lineH);
+  const ctx = renderer.getContext();
+
+  bars.forEach((bar, idx) => {
+    const col = idx % perLine;
+    const row = Math.floor(idx / perLine);
+    const isFirst = col === 0;
+    const x = leftPad + (isFirst ? 0 : firstW + (col - 1) * measW);
+    const y = topPad + row * lineH;
+    const w = isFirst ? firstW : measW;
+
+    try {
+      const stave = new VF.Stave(x, y, w);
+      if (isFirst) {
+        stave.addClef('treble').addTimeSignature(`${beatsPerBar}/4`);
+      }
+      stave.setContext(ctx).draw();
+
+      const placed = byBar.get(bar).sort((a, b) => a.n.beat - b.n.beat);
+      const staveNotes = placed.map(({ n }) => {
+        const { duration, dots } = vexDuration(n.dur_beats);
+        const sn = new VF.StaveNote({
+          clef: 'treble', keys: [`${n.name.toLowerCase()}/${n.octave}`], duration,
+        });
+        const acc = accidentalOf(n.name);
+        if (acc) sn.addModifier(new VF.Accidental(acc), 0);
+        for (let d = 0; d < dots; d++) VF.Dot.buildAndAttach([sn], { all: true });
+        const ann = new VF.Annotation(valveText(n.valves))
+          .setVerticalJustification(VF.Annotation.VerticalJustify.BOTTOM)
+          .setFont('Arial', 9);
+        sn.addModifier(ann, 0);
+        return sn;
+      });
+
+      const voice = new VF.Voice({ num_beats: beatsPerBar, beat_value: 4 }).setStrict(false);
+      voice.addTickables(staveNotes);
+      const noteAreaStart = stave.getNoteStartX();
+      new VF.Formatter().joinVoices([voice]).format([voice], Math.max(40, x + w - noteAreaStart - 12));
+      voice.draw(ctx, stave);
+
+      // Tag each drawn note's SVG group so playback can highlight it and clicks
+      // can play it (best-effort: degrades gracefully if the element is absent).
+      placed.forEach(({ i }, k) => {
+        let el = null;
+        try { el = staveNotes[k].getSVGElement(); } catch (_) { /* not drawn */ }
+        if (el) { el.classList.add('vf-note'); el.setAttribute('data-idx', i); }
+      });
+    } catch (err) {
+      // Skip a malformed measure rather than blanking the whole staff.
+      console.warn('staff measure skipped', bar, err);
+    }
+  });
 }
 
 // Play the transcribed tab in the song's tempo, honoring each note's bar/beat
@@ -582,21 +656,40 @@ async function playTab(btn) {
     const startBeats = (n.bar - fromBar) * m.beatsPerBar + n.beat;
     return { i, n, start: startBeats * beatSec, dur: Math.max(0.12, n.dur_beats * beatSec) };
   });
-  sched.forEach(s => playTone(noteToFreq(s.n.name, s.n.octave), t0 + s.start, Math.min(s.dur, 1.5)));
+  // Schedule each note independently: a single bad note must not abort the rest.
+  sched.forEach(s => {
+    const freq = noteToFreq(s.n.name, s.n.octave);
+    if (!isFinite(freq)) return;
+    try { playTone(freq, t0 + s.start, Math.min(s.dur, 1.5)); } catch (_) { /* skip */ }
+  });
   sched.forEach(s => setTimeout(() => {
     if (myToken !== playToken) return;
-    document.querySelectorAll('.tabnote.active').forEach(c => c.classList.remove('active'));
-    const c = document.querySelector(`.tabnote[data-idx="${s.i}"]`);
+    document.querySelectorAll('.vf-note.active').forEach(c => c.classList.remove('active'));
+    const c = document.querySelector(`.vf-note[data-idx="${s.i}"]`);
     if (c) c.classList.add('active');
   }, s.start * 1000));
 
   const total = Math.max(...sched.map(s => s.start + s.dur));
   setTimeout(() => {
     if (myToken !== playToken) return;
-    document.querySelectorAll('.tabnote.active').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.vf-note.active').forEach(c => c.classList.remove('active'));
     btn.classList.remove('playing');
     btn.textContent = '▶ Play tab';
   }, total * 1000 + 300);
+}
+
+// Play a single transcribed note (click-to-hear on the staff), highlighting its
+// notehead briefly.
+async function playTabNote(idx) {
+  const data = window._lastResult;
+  const n = data && data.tab && (data.tab.notes || [])[idx];
+  if (!n) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();
+  const freq = noteToFreq(n.name, n.octave);
+  if (isFinite(freq)) playTone(freq, audioCtx.currentTime + 0.02, 0.45);
+  const el = document.querySelector(`.vf-note[data-idx="${idx}"]`);
+  if (el) { el.classList.add('active'); setTimeout(() => el.classList.remove('active'), 450); }
 }
 
 // POST a transcription request to the Flask backend, then store the result on
@@ -667,7 +760,9 @@ function wirePlayback() {
     if (transcribeBtn) { runTranscribe(transcribeBtn, false); return; }
     const wholeBtn = e.target.closest('#tabWhole');
     if (wholeBtn) { runTranscribe(wholeBtn, true); return; }
-    const note = e.target.closest('.note, .tabnote');
+    const staffNote = e.target.closest('.vf-note');
+    if (staffNote) { playTabNote(parseInt(staffNote.getAttribute('data-idx'), 10)); return; }
+    const note = e.target.closest('.note');
     if (note) playNote(note);
   });
   results.addEventListener('change', (e) => {
