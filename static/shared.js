@@ -483,7 +483,7 @@ function stopPlayback() {
   if (sp) { sp.classList.remove('playing'); sp.textContent = '▶ Play'; }
   const tp = document.getElementById('tabPlay');
   if (tp) { tp.classList.remove('playing'); tp.textContent = '▶ Play tab'; }
-  document.querySelectorAll('.note.active').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.note.active, .tabnote.active').forEach(c => c.classList.remove('active'));
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
 }
 
@@ -501,40 +501,63 @@ function tabSection(data) {
   return `<div class="scale tabsec" id="tabSec">
     <h2>Trumpet line (tab)
       <button class="play-btn" id="tabTranscribe">🎺 Transcribe loop bars</button>
+      <button class="play-btn" id="tabWhole">🎺 Whole song</button>
       ${playBtn}
     </h2>
-    <p class="tab-note">Best-effort, one note at a time — set the <b>Loop bars</b>
-      above to an exposed/solo trumpet passage for the cleanest result.</p>
+    <p class="tab-note">Best-effort, one note at a time. <b>Loop bars</b> transcribes
+      the looped range above (cleanest on an exposed passage); <b>Whole song</b>
+      sweeps the whole track (slower, messier where the trumpet isn't the lead).
+      Click a note to hear it.</p>
     <div id="tabNotes">${renderTabNotes(tab)}</div>
   </div>`;
+}
+
+// Compact proportional notation: each measure is a fixed-width lane with beat
+// gridlines; every note is a chip positioned by its beat and sized by its
+// duration, so the rhythm (节奏) is visible at a glance. Click a chip to hear it.
+const TAB_BEAT_PX = 48;
+
+function valveText(valves) {
+  if (valves === null) return '—';        // out of practical range
+  if (valves.length === 0) return 'open';
+  return valves.join('·');
+}
+
+// A coarse note-value glyph for common durations; width already conveys length,
+// so an unrecognized duration just falls back to no glyph.
+function rhythmGlyph(durBeats) {
+  return ({ 4: '𝅝', 3: '♩.', 2: '𝅗𝅥', 1.5: '♩.', 1: '♩', 0.75: '♪.', 0.5: '♪', 0.25: '♬' })[durBeats] || '';
 }
 
 function renderTabNotes(tab) {
   const notes = (tab && tab.notes) || [];
   if (!notes.length) {
-    return `<p class="tab-empty">No trumpet line yet — pick the loop bars and hit Transcribe.</p>`;
+    return `<p class="tab-empty">No trumpet line yet — pick the loop bars (or Whole song) and hit Transcribe.</p>`;
   }
+  const beatsPerBar = (window._lastResult && Number(window._lastResult.beats_per_measure)) || 4;
+  const laneW = beatsPerBar * TAB_BEAT_PX;
   const byBar = new Map();
   notes.forEach((n, i) => {
     if (!byBar.has(n.bar)) byBar.set(n.bar, []);
     byBar.get(n.bar).push({ n, i });
   });
-  return [...byBar.keys()].sort((a, b) => a - b).map(bar => {
-    const cells = byBar.get(bar).sort((a, b) => a.n.beat - b.n.beat).map(({ n, i }) => {
+  const measures = [...byBar.keys()].sort((a, b) => a - b).map(bar => {
+    const chips = byBar.get(bar).map(({ n, i }) => {
+      const beat = Math.max(0, Math.min(n.beat, beatsPerBar - 0.25));
+      const left = beat * TAB_BEAT_PX;
+      const w = Math.max(0.25, Math.min(n.dur_beats, beatsPerBar - beat)) * TAB_BEAT_PX - 4;
       const pc = ((SEMITONES[n.name] % 12) + 12) % 12;
-      return `<div class="note tabnote" data-idx="${i}" data-pc="${pc}" data-oct="${n.octave}">
-        <div class="nname">${n.name}<span class="noct">${n.octave}</span></div>
-        <div class="concert">sounds <b>${n.concert}</b></div>
-        ${valveDiagram(n.valves)}
-        ${altDiagram(n.alternates)}
-        <div class="rhythm">beat ${(n.beat + 1).toFixed(2)} · ${n.dur_beats}♩</div>
+      return `<div class="tabnote" data-idx="${i}" data-pc="${pc}" data-oct="${n.octave}"
+        title="sounds ${n.concert}${n.octave}" style="left:${left}px;width:${w}px">
+        <span class="tn-name">${n.name}<sub>${n.octave}</sub></span>
+        <span class="tn-valve">${valveText(n.valves)}</span>
+        <span class="tn-rhythm">${rhythmGlyph(n.dur_beats)}</span>
       </div>`;
     }).join('');
-    return `<div class="octave-row tabbar">
-      <div class="octave-label">bar ${bar}</div>
-      <div class="notes">${cells}</div>
-    </div>`;
+    return `<div class="tabmeasure" style="width:${laneW}px;background-size:${TAB_BEAT_PX}px 100%">
+      <span class="tabmeasure-num">${bar}</span>${chips}</div>`;
   }).join('');
+  return `<div class="tabstrip">${measures}</div>`;
 }
 
 // Play the transcribed tab in the song's tempo, honoring each note's bar/beat
@@ -576,30 +599,35 @@ async function playTab(btn) {
   }, total * 1000 + 300);
 }
 
-// POST the current loop-bar range to the Flask backend for transcription, then
-// store the result on the song and re-render. Needs ANALYZE_API to reach the Mac
-// (same origin on the processing page; the practice page can point at the Mac).
-async function transcribeLoop(btn) {
+// POST a transcription request to the Flask backend, then store the result on
+// the song and re-render. `whole` sweeps the whole track; otherwise the current
+// loop-bar range is used. Needs ANALYZE_API to reach the Mac (same origin on the
+// processing page; the practice page can point at the Mac).
+async function runTranscribe(btn, whole) {
   const data = window._lastResult;
   if (!data || !data.video_id) return;
   const valInt = (id, dflt) => Math.max(1, parseInt((document.getElementById(id) || {}).value, 10) || dflt);
-  const fromBar = valInt('barFrom', 1);
-  const toBar = Math.max(fromBar, valInt('barTo', fromBar));
+  const fromBar = whole ? 1 : valInt('barFrom', 1);
+  const toBar = whole ? 1 : Math.max(fromBar, valInt('barTo', fromBar));
   const api = (window.CONFIG.ANALYZE_API || '').replace(/\/$/, '');
   const m = songMeta();
 
+  const other = document.getElementById(whole ? 'tabTranscribe' : 'tabWhole');
   btn.disabled = true;
+  if (other) other.disabled = true;
   const orig = btn.textContent;
   btn.textContent = 'Transcribing…';
   const notesEl = document.getElementById('tabNotes');
-  if (notesEl) notesEl.innerHTML = `<p class="tab-empty">Listening to bars ${fromBar}–${toBar}… (20–40s)</p>`;
+  if (notesEl) {
+    notesEl.innerHTML = `<p class="tab-empty">Listening to ${whole ? 'the whole song… (up to ~2 min)' : `bars ${fromBar}–${toBar}… (20–40s)`}</p>`;
+  }
 
   try {
     const res = await fetch(api + '/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        video_id: data.video_id, url: data.url,
+        video_id: data.video_id, url: data.url, whole: !!whole,
         from_bar: fromBar, to_bar: toBar,
         bpm: m.bpm, beat_offset: Number(data.beat_offset) || 0,
         beats_per_measure: m.beatsPerBar, concert_key: data.concert_key,
@@ -614,6 +642,7 @@ async function transcribeLoop(btn) {
     if (notesEl) notesEl.innerHTML = `<p class="tab-empty error">${escapeHtml(err.message)}</p>`;
     btn.disabled = false;
     btn.textContent = orig;
+    if (other) other.disabled = false;
   }
 }
 
@@ -635,8 +664,10 @@ function wirePlayback() {
       return;
     }
     const transcribeBtn = e.target.closest('#tabTranscribe');
-    if (transcribeBtn) { transcribeLoop(transcribeBtn); return; }
-    const note = e.target.closest('.note');
+    if (transcribeBtn) { runTranscribe(transcribeBtn, false); return; }
+    const wholeBtn = e.target.closest('#tabWhole');
+    if (wholeBtn) { runTranscribe(wholeBtn, true); return; }
+    const note = e.target.closest('.note, .tabnote');
     if (note) playNote(note);
   });
   results.addEventListener('change', (e) => {

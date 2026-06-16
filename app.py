@@ -85,6 +85,11 @@ def analyze():
     )
 
 
+# Cap whole-song transcription so pyin (which is slow) stays bounded; covers
+# the main body of most songs.
+WHOLE_SONG_SECONDS = 200
+
+
 def _prefer_flats(concert_key):
     """Spell the tab the way the written (Bb-trumpet) key reads."""
     if not concert_key:
@@ -113,6 +118,7 @@ def transcribe():
     if not url:
         return jsonify({"error": "Provide a YouTube url or video_id."}), 400
 
+    whole = bool(data.get("whole"))
     try:
         bpm = float(data.get("bpm") or 0)
         from_bar = max(1, int(data.get("from_bar") or 1))
@@ -124,14 +130,18 @@ def transcribe():
     if bpm <= 0:
         return jsonify({"error": "A positive BPM is required to place bars."}), 400
 
-    # Bar grid (mirrors the JS player's bar math) -> the absolute time window.
     bar_len = beats_per_measure * 60.0 / bpm
     bar_phase = ((beat_offset % bar_len) + bar_len) % bar_len
-    start_sec = int(bar_phase + (from_bar - 1) * bar_len)   # yt-dlp seeks to int seconds
-    end_sec = bar_phase + to_bar * bar_len
-    length = max(1, int(end_sec) - start_sec + 1)
-    # Keep transcription bounded so a stray huge range can't hang the server.
-    length = min(length, 120)
+    if whole:
+        # Transcribe from the top; cap the length so pyin stays bounded.
+        from_bar = 1
+        start_sec = 0
+        length = WHOLE_SONG_SECONDS
+    else:
+        # Bar grid (mirrors the JS player's bar math) -> the absolute time window.
+        start_sec = int(bar_phase + (from_bar - 1) * bar_len)   # yt-dlp seeks to int seconds
+        end_sec = bar_phase + to_bar * bar_len
+        length = min(120, max(1, int(end_sec) - start_sec + 1))
 
     wav_path = None
     try:
@@ -146,7 +156,10 @@ def transcribe():
         if wav_path and os.path.isdir(os.path.dirname(wav_path)):
             shutil.rmtree(os.path.dirname(wav_path), ignore_errors=True)
 
-    return jsonify({"tab": {"from_bar": from_bar, "to_bar": to_bar, "notes": notes}})
+    last_bar = max((n["bar"] for n in notes), default=from_bar)
+    out_to_bar = last_bar if whole else to_bar
+    return jsonify({"tab": {"from_bar": from_bar, "to_bar": out_to_bar,
+                            "whole": whole, "notes": notes}})
 
 
 if __name__ == "__main__":
