@@ -1,0 +1,22 @@
+name: Supabase keep-alive
+# Supabase auto-pauses idle free-tier projects after ~7 days of no database
+# activity. This scheduled ping is a real PostgREST query, which resets that
+# timer so the project stays awake without manual intervention.
+on:
+  schedule:
+    - cron: '0 9 */3 * *'   # every 3 days at 09:00 UTC
+  workflow_dispatch:          # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase songs table
+        run: |
+          URL="https://cudfaekewgonzzgpqnqh.supabase.co"
+          KEY="sb_publishable_vcLCsMHBDItKWvDDzFGjWA_DtUni8Qz"
+          code=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "$URL/rest/v1/songs?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          echo "HTTP $code"
+          test "$code" = "200"
